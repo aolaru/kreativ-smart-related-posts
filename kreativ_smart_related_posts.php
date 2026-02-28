@@ -16,14 +16,19 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'srp_settings';
+    const VERSION = '1.1.0';
 
     public function __construct() {
         register_activation_hook(__FILE__, [$this, 'activate']);
 
+        add_action('plugins_loaded', [$this, 'load_textdomain']);
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
 
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
+        add_action('save_post_post', [$this, 'flush_related_cache_on_save'], 10, 3);
+        add_action('deleted_post', [$this, 'flush_related_cache_on_delete']);
+        add_action('set_object_terms', [$this, 'flush_related_cache_on_terms'], 10, 6);
         add_filter('the_content', [$this, 'auto_append_related']);
 
         add_shortcode('smart_related_posts', [$this, 'shortcode']);
@@ -31,6 +36,10 @@ class Kreativ_Smart_Related_Posts {
         add_shortcode('kreativ_related_articles', [$this, 'shortcode']);
 
         add_action('init', [$this, 'register_block']);
+    }
+
+    public function load_textdomain() {
+        load_plugin_textdomain('kreativ-smart-related-posts', false, dirname(plugin_basename(__FILE__)) . '/languages');
     }
 
     public function activate() {
@@ -204,8 +213,57 @@ class Kreativ_Smart_Related_Posts {
 
     public function enqueue_assets() {
         $css = '.srp-related{margin-top:2rem}.srp-related h3{margin:0 0 .75rem}.srp-grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}.srp-card{border:1px solid #eee;border-radius:16px;overflow:hidden}.srp-card a{display:block;text-decoration:none}.srp-thumb img{display:block;width:100%;height:auto}.srp-content{padding:12px}.srp-title{font-weight:600;margin:0 0 .5rem}.srp-excerpt{color:#666;font-size:.95em;margin:0}.srp-list{list-style:none;padding-left:0;margin:0}.srp-list li{margin:.5rem 0}.srp-minimal{display:flex;flex-wrap:wrap;gap:.5rem}.srp-pill{padding:.25rem .5rem;border-radius:999px;background:#f5f5f5}.srp-titlebar{display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem}.srp-dot{width:.6rem;height:.6rem;border-radius:999px;background:#00C2FF;display:inline-block}.srp-titletext{font-weight:700;letter-spacing:.2px}';
-        wp_register_style('srp-related-posts', false, [], '1.1.0');
+        wp_register_style('srp-related-posts', false, [], self::VERSION);
         wp_add_inline_style('srp-related-posts', $css);
+    }
+
+    public function flush_related_cache_on_save($post_id, $post, $update) {
+        unset($update);
+
+        if (wp_is_post_revision($post_id) || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
+            return;
+        }
+
+        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+            return;
+        }
+
+        $this->flush_related_cache();
+    }
+
+    public function flush_related_cache_on_delete($post_id) {
+        if (get_post_type($post_id) !== 'post') {
+            return;
+        }
+
+        $this->flush_related_cache();
+    }
+
+    public function flush_related_cache_on_terms($object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids) {
+        unset($terms, $tt_ids, $append, $old_tt_ids);
+
+        if (get_post_type($object_id) !== 'post') {
+            return;
+        }
+
+        if (!in_array($taxonomy, ['category', 'post_tag'], true)) {
+            return;
+        }
+
+        $this->flush_related_cache();
+    }
+
+    private function flush_related_cache() {
+        global $wpdb;
+
+        $transient_prefix = $wpdb->esc_like('_transient_srp_rel_') . '%';
+        $timeout_prefix = $wpdb->esc_like('_transient_timeout_srp_rel_') . '%';
+
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+            $transient_prefix,
+            $timeout_prefix
+        ));
     }
 
     public function auto_append_related($content) {
@@ -255,7 +313,7 @@ class Kreativ_Smart_Related_Posts {
         }
 
         $opt = $this->settings();
-        $title = esc_html($opt['title']);
+        $title = isset($opt['title']) ? $opt['title'] : '';
         $posts = $this->get_related_posts($post_id, $args['limit']);
         if (empty($posts)) {
             return '';
@@ -446,18 +504,34 @@ class Kreativ_Smart_Related_Posts {
             return [];
         }
 
-        $ids = array_map('intval', $ids);
-        $ids = array_values(array_intersect($ids, $candidate_ids));
+        $candidate_ids = array_values(array_map('intval', $candidate_ids));
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ordered_ids = [];
 
-        return $ids;
+        foreach ($ids as $id) {
+            if (in_array($id, $candidate_ids, true)) {
+                $ordered_ids[] = $id;
+            }
+        }
+
+        foreach ($candidate_ids as $candidate_id) {
+            if (!in_array($candidate_id, $ordered_ids, true)) {
+                $ordered_ids[] = $candidate_id;
+            }
+        }
+
+        return $ordered_ids;
     }
 
     public function register_block() {
-        wp_register_script('srp-block', '', ['wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor'], '1.1.0', true);
-
-        $inline = "(function(wp){ if(!wp||!wp.blocks){return;} const {registerBlockType}=wp.blocks; const el=wp.element.createElement; const InspectorControls=wp.blockEditor?wp.blockEditor.InspectorControls:(wp.editor?wp.editor.InspectorControls:null); const PanelBody=wp.components.PanelBody; const SelectControl=wp.components.SelectControl; const ToggleControl=wp.components.ToggleControl; const TextControl=wp.components.TextControl; registerBlockType('kreativ-smart-related-posts/related-posts',{ title:'Kreativ Smart Related Posts', icon:'admin-post', category:'widgets', attributes:{ layout:{type:'string',default:'grid'}, posts:{type:'number',default:6}, excerpt:{type:'boolean',default:false} }, edit:function(props){ const a=props.attributes; const controls=InspectorControls?el(InspectorControls,{},el(PanelBody,{title:'Settings'},[ el(SelectControl,{label:'Layout',value:a.layout,options:[{label:'Grid',value:'grid'},{label:'List',value:'list'},{label:'Minimal',value:'minimal'}],onChange:function(v){props.setAttributes({layout:v});}}), el(TextControl,{label:'Number of posts',type:'number',value:a.posts,onChange:function(v){props.setAttributes({posts:parseInt(v,10)||1});}}), el(ToggleControl,{label:'Show excerpt (grid/list)',checked:a.excerpt,onChange:function(v){props.setAttributes({excerpt:!!v});}}) ])):null; return el('div',{className:'srp-block-editor'}, [controls, el('p',{}, 'Kreativ Smart Related Posts - layout: '+a.layout+', posts: '+a.posts+(a.excerpt?' (with excerpts)':'')) ]); }, save:function(){return null;} }); })(window.wp);";
-
-        wp_add_inline_script('srp-block', $inline);
+        wp_register_script(
+            'srp-block',
+            plugins_url('assets/js/srp-block.js', __FILE__),
+            ['wp-blocks', 'wp-element', 'wp-components', 'wp-block-editor', 'wp-i18n'],
+            self::VERSION,
+            true
+        );
+        wp_set_script_translations('srp-block', 'kreativ-smart-related-posts', plugin_dir_path(__FILE__) . 'languages');
 
         register_block_type('kreativ-smart-related-posts/related-posts', [
             'editor_script'   => 'srp-block',
