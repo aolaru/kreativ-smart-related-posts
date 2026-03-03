@@ -21,7 +21,6 @@ class Kreativ_Smart_Related_Posts {
     public function __construct() {
         register_activation_hook(__FILE__, [$this, 'activate']);
 
-        add_action('plugins_loaded', [$this, 'load_textdomain']);
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
 
@@ -36,10 +35,6 @@ class Kreativ_Smart_Related_Posts {
         add_shortcode('kreativ_related_articles', [$this, 'shortcode']);
 
         add_action('init', [$this, 'register_block']);
-    }
-
-    public function load_textdomain() {
-        load_plugin_textdomain('kreativ-smart-related-posts', false, dirname(plugin_basename(__FILE__)) . '/languages');
     }
 
     public function activate() {
