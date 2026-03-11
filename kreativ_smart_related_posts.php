@@ -17,15 +17,19 @@ if (!defined('ABSPATH')) {
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'srp_settings';
     const VERSION = '1.1.0';
+    const META_INCLUDE = '_srp_manual_include_ids';
+    const META_EXCLUDE = '_srp_manual_exclude_ids';
 
     public function __construct() {
         register_activation_hook(__FILE__, [$this, 'activate']);
 
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('add_meta_boxes', [$this, 'register_related_overrides_metabox']);
 
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('save_post_post', [$this, 'flush_related_cache_on_save'], 10, 3);
+        add_action('save_post_post', [$this, 'save_related_overrides_meta'], 20, 3);
         add_action('deleted_post', [$this, 'flush_related_cache_on_delete']);
         add_action('set_object_terms', [$this, 'flush_related_cache_on_terms'], 10, 6);
         add_filter('the_content', [$this, 'auto_append_related']);
@@ -206,6 +210,78 @@ class Kreativ_Smart_Related_Posts {
         <?php
     }
 
+    public function register_related_overrides_metabox() {
+        add_meta_box(
+            'srp_related_overrides',
+            __('Smart Related Overrides', 'kreativ-smart-related-posts'),
+            [$this, 'render_related_overrides_metabox'],
+            'post',
+            'side',
+            'default'
+        );
+    }
+
+    public function render_related_overrides_metabox($post) {
+        $include = get_post_meta($post->ID, self::META_INCLUDE, true);
+        $exclude = get_post_meta($post->ID, self::META_EXCLUDE, true);
+
+        wp_nonce_field('srp_related_overrides_nonce', 'srp_related_overrides_nonce');
+        ?>
+        <p>
+            <label for="srp_manual_include"><strong><?php esc_html_e('Force include post IDs', 'kreativ-smart-related-posts'); ?></strong></label>
+            <input type="text" id="srp_manual_include" name="srp_manual_include" value="<?php echo esc_attr($include); ?>" class="widefat" />
+        </p>
+        <p>
+            <label for="srp_manual_exclude"><strong><?php esc_html_e('Force exclude post IDs', 'kreativ-smart-related-posts'); ?></strong></label>
+            <input type="text" id="srp_manual_exclude" name="srp_manual_exclude" value="<?php echo esc_attr($exclude); ?>" class="widefat" />
+        </p>
+        <p class="description">
+            <?php esc_html_e('Use comma-separated IDs. Includes are pinned first. Excludes are always removed.', 'kreativ-smart-related-posts'); ?>
+        </p>
+        <?php
+    }
+
+    public function save_related_overrides_meta($post_id, $post, $update) {
+        unset($update);
+
+        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+            return;
+        }
+
+        if (wp_is_post_revision($post_id) || (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)) {
+            return;
+        }
+
+        if (!current_user_can('edit_post', $post_id)) {
+            return;
+        }
+
+        $nonce = isset($_POST['srp_related_overrides_nonce']) ? sanitize_text_field(wp_unslash($_POST['srp_related_overrides_nonce'])) : '';
+        if (empty($nonce) || !wp_verify_nonce($nonce, 'srp_related_overrides_nonce')) {
+            return;
+        }
+
+        $raw_include = isset($_POST['srp_manual_include']) ? sanitize_text_field(wp_unslash($_POST['srp_manual_include'])) : '';
+        $raw_exclude = isset($_POST['srp_manual_exclude']) ? sanitize_text_field(wp_unslash($_POST['srp_manual_exclude'])) : '';
+
+        $exclude_ids = $this->parse_post_id_list($raw_exclude, [$post_id]);
+        $include_ids = $this->parse_post_id_list($raw_include, array_merge([$post_id], $exclude_ids));
+
+        if (!empty($include_ids)) {
+            update_post_meta($post_id, self::META_INCLUDE, implode(',', $include_ids));
+        } else {
+            delete_post_meta($post_id, self::META_INCLUDE);
+        }
+
+        if (!empty($exclude_ids)) {
+            update_post_meta($post_id, self::META_EXCLUDE, implode(',', $exclude_ids));
+        } else {
+            delete_post_meta($post_id, self::META_EXCLUDE);
+        }
+
+        $this->flush_related_cache();
+    }
+
     public function enqueue_assets() {
         $css = '.srp-related{margin-top:1.75rem;font-size:.85rem}.srp-related h3{margin:0 0 .6rem}.srp-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}.srp-card{border:1px solid #eee;border-radius:14px;overflow:hidden}.srp-card a{display:block;text-decoration:none}.srp-thumb img{display:block;width:100%;height:auto}.srp-content{padding:10px}.srp-title{font-size:.95rem;font-weight:600;margin:0 0 .35rem;line-height:1.3}.srp-excerpt{color:#666;font-size:.88em;line-height:1.4;margin:0}.srp-list{list-style:none;padding-left:0;margin:0}.srp-list li{margin:.35rem 0}.srp-minimal{display:flex;flex-wrap:wrap;gap:.4rem}.srp-pill{padding:.2rem .45rem;border-radius:999px;background:#f5f5f5}.srp-titlebar{display:flex;align-items:center;gap:.45rem;margin-bottom:.6rem}.srp-dot{width:.55rem;height:.55rem;border-radius:999px;background:#00C2FF;display:inline-block}.srp-titletext{font-size:1rem;font-weight:700;letter-spacing:.15px}';
         wp_register_style('srp-related-posts', false, [], self::VERSION);
@@ -362,7 +438,12 @@ class Kreativ_Smart_Related_Posts {
 
     private function get_related_posts($post_id, $limit = 6) {
         $opt = $this->settings();
-        $cache_key = 'srp_rel_' . intval($post_id) . '_' . intval($limit) . '_' . (intval($opt['enable_ai']) ? 'ai' : 'basic');
+        $manual = $this->get_manual_related_overrides($post_id);
+        $manual_include = $manual['include'];
+        $manual_exclude = $manual['exclude'];
+        $override_signature = md5(implode(',', $manual_include) . '|' . implode(',', $manual_exclude));
+
+        $cache_key = 'srp_rel_' . intval($post_id) . '_' . intval($limit) . '_' . (intval($opt['enable_ai']) ? 'ai' : 'basic') . '_' . $override_signature;
         $cache_ttl = max(0, intval($opt['cache_hours'])) * HOUR_IN_SECONDS;
 
         if ($cache_ttl > 0) {
@@ -372,19 +453,20 @@ class Kreativ_Smart_Related_Posts {
             }
         }
 
-        $candidates = $this->get_taxonomy_candidates($post_id, min(40, max(8, $limit * 6)));
-        if (empty($candidates)) {
-            return [];
-        }
+        $candidates = $this->get_taxonomy_candidates($post_id, min(60, max(12, $limit * 8)), $manual_exclude);
+        $ordered = [];
 
-        $ordered = $candidates;
-        if (!empty($opt['enable_ai']) && !empty($opt['api_key'])) {
-            $reordered = $this->ai_rerank($post_id, $candidates, $limit, $opt['api_key'], $opt['model']);
-            if (!empty($reordered)) {
-                $ordered = $reordered;
+        if (!empty($candidates)) {
+            $ordered = $candidates;
+            if (!empty($opt['enable_ai']) && !empty($opt['api_key'])) {
+                $reordered = $this->ai_rerank($post_id, $candidates, $limit, $opt['api_key'], $opt['model']);
+                if (!empty($reordered)) {
+                    $ordered = $reordered;
+                }
             }
         }
 
+        $ordered = $this->merge_manual_related_overrides($post_id, $manual_include, $manual_exclude, $ordered);
         $ordered = array_slice($ordered, 0, $limit);
 
         if ($cache_ttl > 0) {
@@ -394,9 +476,9 @@ class Kreativ_Smart_Related_Posts {
         return $ordered;
     }
 
-    private function get_taxonomy_candidates($post_id, $limit) {
-        $terms_cat = wp_get_post_terms($post_id, 'category', ['fields' => 'ids']);
-        $terms_tag = wp_get_post_terms($post_id, 'post_tag', ['fields' => 'ids']);
+    private function get_taxonomy_candidates($post_id, $limit, $exclude_ids = []) {
+        $terms_cat = array_map('intval', wp_get_post_terms($post_id, 'category', ['fields' => 'ids']));
+        $terms_tag = array_map('intval', wp_get_post_terms($post_id, 'post_tag', ['fields' => 'ids']));
 
         if (empty($terms_cat) && empty($terms_tag)) {
             return [];
@@ -420,9 +502,12 @@ class Kreativ_Smart_Related_Posts {
             ];
         }
 
+        $blocked_ids = array_values(array_unique(array_merge([intval($post_id)], array_map('intval', $exclude_ids))));
+
         $q = new WP_Query([
             'post_type'           => 'post',
-            'post__not_in'        => [intval($post_id)],
+            'post_status'         => 'publish',
+            'post__not_in'        => $blocked_ids,
             'posts_per_page'      => intval($limit),
             'ignore_sticky_posts' => true,
             'tax_query'           => $tax_query,
@@ -434,7 +519,135 @@ class Kreativ_Smart_Related_Posts {
         $ids = is_array($q->posts) ? array_map('intval', $q->posts) : [];
         wp_reset_postdata();
 
+        if (empty($ids)) {
+            return [];
+        }
+
+        $cat_lookup = array_fill_keys($terms_cat, true);
+        $tag_lookup = array_fill_keys($terms_tag, true);
+        $metrics = [];
+
+        foreach ($ids as $candidate_id) {
+            $metrics[$candidate_id] = [
+                'id'        => $candidate_id,
+                'cat_match' => 0,
+                'tag_match' => 0,
+                'date'      => strtotime((string) get_post_field('post_date_gmt', $candidate_id)),
+            ];
+        }
+
+        $related_terms = wp_get_object_terms($ids, ['category', 'post_tag'], ['fields' => 'all_with_object_id']);
+        if (!is_wp_error($related_terms) && is_array($related_terms)) {
+            foreach ($related_terms as $term) {
+                if (!isset($metrics[$term->object_id])) {
+                    continue;
+                }
+
+                $term_id = intval($term->term_id);
+                if ($term->taxonomy === 'category' && isset($cat_lookup[$term_id])) {
+                    $metrics[$term->object_id]['cat_match']++;
+                }
+                if ($term->taxonomy === 'post_tag' && isset($tag_lookup[$term_id])) {
+                    $metrics[$term->object_id]['tag_match']++;
+                }
+            }
+        }
+
+        $scored = array_values($metrics);
+        usort($scored, static function ($a, $b) {
+            $score_a = ($a['cat_match'] * 4) + ($a['tag_match'] * 2);
+            $score_b = ($b['cat_match'] * 4) + ($b['tag_match'] * 2);
+
+            if ($score_a !== $score_b) {
+                return $score_b <=> $score_a;
+            }
+            if ($a['cat_match'] !== $b['cat_match']) {
+                return $b['cat_match'] <=> $a['cat_match'];
+            }
+            if ($a['tag_match'] !== $b['tag_match']) {
+                return $b['tag_match'] <=> $a['tag_match'];
+            }
+
+            return $b['date'] <=> $a['date'];
+        });
+
+        return array_values(array_map(static function ($row) {
+            return intval($row['id']);
+        }, $scored));
+    }
+
+    private function get_manual_related_overrides($post_id) {
+        $raw_include = get_post_meta($post_id, self::META_INCLUDE, true);
+        $raw_exclude = get_post_meta($post_id, self::META_EXCLUDE, true);
+
+        $exclude_ids = $this->parse_post_id_list($raw_exclude, [$post_id]);
+        $include_ids = $this->parse_post_id_list($raw_include, array_merge([$post_id], $exclude_ids));
+
+        return [
+            'include' => $include_ids,
+            'exclude' => $exclude_ids,
+        ];
+    }
+
+    private function parse_post_id_list($raw, $skip_ids = []) {
+        $raw = is_string($raw) ? $raw : '';
+        if ($raw === '') {
+            return [];
+        }
+
+        $skip_map = array_fill_keys(array_map('intval', $skip_ids), true);
+        $parts = preg_split('/[\s,]+/', $raw);
+        $ids = [];
+        foreach ($parts as $part) {
+            $id = intval($part);
+            if ($id <= 0 || isset($skip_map[$id]) || in_array($id, $ids, true)) {
+                continue;
+            }
+            $ids[] = $id;
+        }
+
         return $ids;
+    }
+
+    private function merge_manual_related_overrides($post_id, $manual_include, $manual_exclude, $ordered) {
+        $blocked = array_fill_keys(array_merge([intval($post_id)], array_map('intval', $manual_exclude)), true);
+        $ordered = is_array($ordered) ? array_map('intval', $ordered) : [];
+
+        $validated_include = [];
+        if (!empty($manual_include)) {
+            $candidates = [];
+            foreach ($manual_include as $id) {
+                $id = intval($id);
+                if ($id > 0 && !isset($blocked[$id])) {
+                    $candidates[] = $id;
+                }
+            }
+
+            if (!empty($candidates)) {
+                $validated_include = get_posts([
+                    'post_type'           => 'post',
+                    'post_status'         => 'publish',
+                    'post__in'            => $candidates,
+                    'orderby'             => 'post__in',
+                    'posts_per_page'      => count($candidates),
+                    'fields'              => 'ids',
+                    'ignore_sticky_posts' => true,
+                    'no_found_rows'       => true,
+                ]);
+                $validated_include = is_array($validated_include) ? array_map('intval', $validated_include) : [];
+            }
+        }
+
+        $result = [];
+        foreach (array_merge($validated_include, $ordered) as $id) {
+            $id = intval($id);
+            if ($id <= 0 || isset($blocked[$id]) || in_array($id, $result, true)) {
+                continue;
+            }
+            $result[] = $id;
+        }
+
+        return $result;
     }
 
     private function ai_rerank($post_id, $candidate_ids, $limit, $api_key, $model) {
