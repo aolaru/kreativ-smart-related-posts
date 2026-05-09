@@ -4,7 +4,7 @@ Tags: related posts, internal links, ai, openai, seo
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,7 +21,11 @@ Features:
 - Shortcode support: `[smart_related_posts]`
 - Dynamic block for the block editor
 - Multiple layouts: Grid, List, Minimal
+- Style controls for accent color, thumbnails, image ratio, grid columns, and card radius
 - Optional excerpt display
+- Optional post date and category display
+- Configurable fallback posts when no taxonomy match exists
+- Manual include/exclude picker per post
 - Optional AI re-ranking via OpenAI (disabled by default)
 - Built-in caching for performance
 
@@ -36,9 +40,10 @@ Backwards compatibility:
 
 == Screenshots ==
 
-1. Plugin settings screen with AI, layout, and cache controls.
+1. Plugin settings screen with AI, layout, display, fallback, and cache controls.
 2. Related posts displayed in grid layout below a post.
 3. Block editor preview and inspector controls.
+4. Manual include/exclude picker in the post editor.
 
 == Frequently Asked Questions ==
 
@@ -52,6 +57,9 @@ Only when AI re-ranking is enabled and an API key is set. The plugin sends:
 
 = Does the plugin cache results? =
 Yes. Related post results are cached with WordPress transients to reduce repeated database lookups and API calls. Cache duration is configurable, and caches are cleared when posts or category/tag assignments change.
+
+= What happens when a post has no related category or tag matches? =
+You can choose to show nothing, latest posts, or posts from the same author.
 
 = Does the plugin create custom database tables? =
 No.
@@ -71,6 +79,14 @@ Policies:
 - https://openai.com/policies/terms-of-use
 
 == Changelog ==
+
+= 1.2.0 =
+* Added searchable manual include/exclude post picker in the post editor.
+* Added display controls for accent color, thumbnails, image ratio, grid columns, and card border radius.
+* Added fallback modes for posts with no category/tag matches.
+* Added display options for link target, date, category, and heading tag.
+* Improved block editor preview to show styled grid/list/minimal previews.
+* Extended shortcode and block attributes for the new display options.
 
 = 1.1.0 =
 * Rebranded to Kreativ Smart Related Posts for broad public use.

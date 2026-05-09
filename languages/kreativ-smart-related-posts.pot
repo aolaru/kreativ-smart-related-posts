@@ -1,8 +1,8 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Kreativ Smart Related Posts 1.1.0\n"
+"Project-Id-Version: Kreativ Smart Related Posts 1.2.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kreativ-smart-related-posts/\n"
-"POT-Creation-Date: 2026-02-28 12:00+0000\n"
+"POT-Creation-Date: 2026-05-05 00:00+0000\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -11,124 +11,194 @@ msgstr ""
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "X-Domain: kreativ-smart-related-posts\n"
 
-#: kreativ_smart_related_posts.php:53 kreativ_smart_related_posts.php:75
-#: kreativ_smart_related_posts.php:186
 msgid "Related Posts"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:90 kreativ_smart_related_posts.php:91
-#: kreativ_smart_related_posts.php:198 assets/js/srp-block.js:18
 msgid "Kreativ Smart Related Posts"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:103
 msgid "General"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:108
 msgid "Enable AI re-ranking"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:110
 msgid "Use OpenAI to semantically re-rank candidate posts."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:113
 msgid "OpenAI API Key"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:116
 msgid "Only required when AI re-ranking is enabled."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:119
 msgid "OpenAI model"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:122
 msgid "Model used only when AI re-ranking is enabled."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:125 assets/js/srp-block.js:43
+msgid "Default layout"
+msgstr ""
+
 msgid "Layout"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:129 assets/js/srp-block.js:46
 msgid "Grid"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:129 assets/js/srp-block.js:47
 msgid "List"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:129 assets/js/srp-block.js:48
 msgid "Minimal"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:135 assets/js/srp-block.js:55
 msgid "Number of posts"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:140 assets/js/srp-block.js:63
 msgid "Show excerpt (grid/list)"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:142
 msgid "Display short excerpts for each related post."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:145
 msgid "Auto-insert after content"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:147
 msgid "Automatically append to single posts."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:150
 msgid "Section title"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:155
 msgid "Cache (hours)"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:158
 msgid "Store results in a transient to reduce API/DB calls (0 to disable)."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:204
+msgid "Display"
+msgstr ""
+
+msgid "Accent color"
+msgstr ""
+
+msgid "Show thumbnails"
+msgstr ""
+
+msgid "Display featured images in grid cards."
+msgstr ""
+
+msgid "Image ratio"
+msgstr ""
+
+msgid "Grid columns"
+msgstr ""
+
+msgid "Card border radius"
+msgstr ""
+
+msgid "Fallback posts"
+msgstr ""
+
+msgid "Show nothing"
+msgstr ""
+
+msgid "Latest posts"
+msgstr ""
+
+msgid "Same author"
+msgstr ""
+
+msgid "Used only when no category or tag matches are found."
+msgstr ""
+
+msgid "Link target"
+msgstr ""
+
+msgid "Same tab"
+msgstr ""
+
+msgid "New tab"
+msgstr ""
+
+msgid "Show date"
+msgstr ""
+
+msgid "Display post dates below titles."
+msgstr ""
+
+msgid "Show category"
+msgstr ""
+
+msgid "Display the first category below titles."
+msgstr ""
+
+msgid "Heading tag"
+msgstr ""
+
 msgid "Shortcode:"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:205
 msgid "Block:"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:205
 msgid "Search for “Kreativ Smart Related Posts” in the block inserter."
 msgstr ""
 
-#: kreativ_smart_related_posts.php:207
 msgid "External Services"
 msgstr ""
 
-#: kreativ_smart_related_posts.php:208
 msgid "When AI re-ranking is enabled, this plugin sends post title/excerpt and candidate post titles/excerpts to the OpenAI API for ranking."
 msgstr ""
 
-#: assets/js/srp-block.js:41
+msgid "Smart Related Overrides"
+msgstr ""
+
+msgid "Force include posts"
+msgstr ""
+
+msgid "Force exclude posts"
+msgstr ""
+
+msgid "Includes are pinned first. Excludes are always removed."
+msgstr ""
+
+msgid "Search posts..."
+msgstr ""
+
+msgid "Permission denied."
+msgstr ""
+
+msgid "Post #%d"
+msgstr ""
+
+msgid "No posts found."
+msgstr ""
+
+msgid "Searching..."
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
 msgid "Settings"
 msgstr ""
 
-#: assets/js/srp-block.js:78
-msgid "Kreativ Smart Related Posts preview"
+msgid "How to plan a stronger content cluster"
 msgstr ""
 
-#: assets/js/srp-block.js:80
-msgid "posts"
+msgid "Internal linking checklist for publishers"
 msgstr ""
 
-#: assets/js/srp-block.js:82
-msgid "with excerpts"
+msgid "Choosing topics that keep readers moving"
+msgstr ""
+
+msgid "May 5, 2026"
+msgstr ""
+
+msgid "Strategy"
+msgstr ""
+
+msgid "Short preview excerpt for this related article."
 msgstr ""
