@@ -93,40 +93,8 @@
         title: __('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'),
         icon: 'admin-post',
         category: 'widgets',
-        attributes: {
-            layout: {
-                type: 'string',
-                default: 'grid'
-            },
-            posts: {
-                type: 'number',
-                default: 6
-            },
-            excerpt: {
-                type: 'boolean',
-                default: false
-            },
-            thumbnail: {
-                type: 'boolean',
-                default: true
-            },
-            target: {
-                type: 'string',
-                default: 'same'
-            },
-            date: {
-                type: 'boolean',
-                default: false
-            },
-            category: {
-                type: 'boolean',
-                default: false
-            },
-            heading: {
-                type: 'string',
-                default: 'h3'
-            }
-        },
+        apiVersion: window.ksrpBlockApiVersion,
+        attributes: window.ksrpBlockAttributes,
         edit: function (props) {
             const attributes = props.attributes;
             const controls = InspectorControls
@@ -149,9 +117,11 @@
                         el(TextControl, {
                             label: __('Number of posts', 'kreativ-smart-related-posts'),
                             type: 'number',
+                            min: 1,
+                            max: 12,
                             value: attributes.posts,
                             onChange: function (value) {
-                                props.setAttributes({ posts: Math.max(1, parseInt(value, 10) || 1) });
+                                props.setAttributes({ posts: Math.max(1, Math.min(12, parseInt(value, 10) || 1)) });
                             }
                         }),
                         el(ToggleControl, {
@@ -209,7 +179,7 @@
                 )
                 : null;
 
-            return el('div', { className: 'srp-block-editor srp-related' }, [
+            return el('div', wp.blockEditor.useBlockProps({ className: 'srp-block-editor srp-related' }), [
                 controls,
                 el('style', {}, '.srp-block-editor{--srp-accent:#00C2FF;--srp-radius:14px;--srp-cols:3;--srp-ratio:16 / 9}.srp-block-editor .srp-grid{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));list-style:none;padding-left:0;margin:0}.srp-block-editor .srp-card{border:1px solid #eee;border-radius:14px;overflow:hidden;background:#fff}.srp-block-editor a{color:inherit;text-decoration:none}.srp-block-editor .srp-thumb{aspect-ratio:16 / 9;background:#eef6f8;display:flex;align-items:center;justify-content:center;color:#2271b1;font-weight:700}.srp-block-editor .srp-content{padding:10px}.srp-block-editor .srp-title{font-size:.95rem;font-weight:600;margin:0 0 .35rem;line-height:1.3}.srp-block-editor .srp-meta{color:#666;font-size:.78rem;margin:0 0 .35rem}.srp-block-editor .srp-excerpt{color:#666;font-size:.88em;line-height:1.4;margin:0}.srp-block-editor .srp-list{list-style:none;padding-left:0;margin:0}.srp-block-editor .srp-list li{margin:.5rem 0}.srp-block-editor .srp-minimal{display:flex;flex-wrap:wrap;gap:.4rem}.srp-block-editor .srp-pill{padding:.2rem .45rem;border-radius:999px;background:#f5f5f5}.srp-block-editor .srp-titlebar{display:flex;align-items:center;gap:.45rem;margin-bottom:.6rem}.srp-block-editor .srp-dot{width:.55rem;height:.55rem;border-radius:999px;background:#00C2FF;display:inline-block}.srp-block-editor .srp-titletext{font-size:1rem;font-weight:700;letter-spacing:0;margin:0}@media (max-width:782px){.srp-block-editor .srp-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}'),
                 el('div', { className: 'srp-titlebar' }, [

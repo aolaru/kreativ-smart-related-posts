@@ -1,0 +1,22 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/block.json",
+    "apiVersion": 3,
+    "name": "kreativ-smart-related-posts/related-posts",
+    "version": "1.2.1",
+    "title": "Kreativ Smart Related Posts",
+    "category": "widgets",
+    "icon": "admin-post",
+    "textdomain": "kreativ-smart-related-posts",
+    "editorScript": "srp-block",
+    "usesContext": ["postId", "postType"],
+    "attributes": {
+        "layout": { "type": "string", "enum": ["grid", "list", "minimal"], "default": "grid" },
+        "posts": { "type": "number", "default": 6 },
+        "excerpt": { "type": "boolean", "default": false },
+        "thumbnail": { "type": "boolean", "default": true },
+        "target": { "type": "string", "enum": ["same", "new"], "default": "same" },
+        "date": { "type": "boolean", "default": false },
+        "category": { "type": "boolean", "default": false },
+        "heading": { "type": "string", "enum": ["h2", "h3", "h4"], "default": "h3" }
+    }
+}

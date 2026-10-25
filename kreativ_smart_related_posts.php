@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Kreativ Smart Related Posts
  * Description: Display related posts using shared categories/tags, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Andrei Olaru
  * License: GPL-2.0+
  * Text Domain: kreativ-smart-related-posts
@@ -16,12 +16,17 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'srp_settings';
-    const VERSION = '1.2.0';
+    const VERSION = '1.2.1';
+    const CACHE_GENERATION = 'ksrp_cache_generation';
+    const AI_HOOK = 'ksrp_refresh_ai_ranking';
     const META_INCLUDE = '_srp_manual_include_ids';
     const META_EXCLUDE = '_srp_manual_exclude_ids';
 
     public function __construct() {
         register_activation_hook(__FILE__, [$this, 'activate']);
+        register_deactivation_hook(__FILE__, [$this, 'deactivate']);
+        add_action(self::AI_HOOK, [$this, 'refresh_ai_ranking'], 10, 3);
+        add_action('update_option_' . self::OPTION, [$this, 'settings_changed'], 10, 2);
 
         add_action('admin_menu', [$this, 'admin_menu']);
         add_action('admin_init', [$this, 'register_settings']);
@@ -32,7 +37,7 @@ class Kreativ_Smart_Related_Posts {
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
         add_action('save_post_post', [$this, 'flush_related_cache_on_save'], 10, 3);
         add_action('save_post_post', [$this, 'save_related_overrides_meta'], 20, 3);
-        add_action('deleted_post', [$this, 'flush_related_cache_on_delete']);
+        add_action('deleted_post', [$this, 'flush_related_cache_on_delete'], 10, 2);
         add_action('set_object_terms', [$this, 'flush_related_cache_on_terms'], 10, 6);
         add_filter('the_content', [$this, 'auto_append_related']);
 
@@ -44,6 +49,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function activate() {
+        $this->flush_related_cache();
         $defaults = [
             'enable_ai'      => 0,
             'api_key'        => '',
@@ -176,7 +182,7 @@ class Kreativ_Smart_Related_Posts {
         add_settings_field('cache_hours', __('Cache (hours)', 'kreativ-smart-related-posts'), function () {
             $opt = $this->settings();
             echo '<input type="number" min="0" max="168" name="' . esc_attr(self::OPTION) . '[cache_hours]" value="' . intval($opt['cache_hours']) . '" />';
-            echo '<p class="description">' . esc_html__('Store results in a transient to reduce API/DB calls (0 to disable).', 'kreativ-smart-related-posts') . '</p>';
+            echo '<p class="description">' . esc_html__('Store results in a transient to reduce API/DB calls (0 to disable). Background AI ranking requires caching and WP-Cron.', 'kreativ-smart-related-posts') . '</p>';
         }, 'kreativ-smart-related-posts', 'srp_main');
 
         add_settings_section(
@@ -400,7 +406,7 @@ class Kreativ_Smart_Related_Posts {
 
         $posts = get_posts([
             'post_type'           => 'post',
-            'post_status'         => $this->post_picker_statuses(),
+            'post_status'         => 'publish',
             's'                   => $term,
             'posts_per_page'      => 10,
             'orderby'             => 'date',
@@ -431,9 +437,17 @@ class Kreativ_Smart_Related_Posts {
 
         $items = [];
         foreach ($posts as $post) {
+            if ($post->post_status !== 'publish' && !current_user_can('edit_post', $post->ID)) {
+                continue;
+            }
+            $title = get_the_title($post);
+            if ($title === '') {
+                /* translators: %d: WordPress post ID. */
+                $title = sprintf(__('Post #%d', 'kreativ-smart-related-posts'), intval($post->ID));
+            }
             $items[] = [
                 'id'    => intval($post->ID),
-                'title' => get_the_title($post) ? get_the_title($post) : sprintf(__('Post #%d', 'kreativ-smart-related-posts'), intval($post->ID)),
+                'title' => $title,
             ];
         }
 
@@ -556,8 +570,8 @@ class Kreativ_Smart_Related_Posts {
         $this->flush_related_cache();
     }
 
-    public function flush_related_cache_on_delete($post_id) {
-        if (get_post_type($post_id) !== 'post') {
+    public function flush_related_cache_on_delete($post_id, $post) {
+        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
             return;
         }
 
@@ -579,20 +593,33 @@ class Kreativ_Smart_Related_Posts {
     }
 
     private function flush_related_cache() {
-        global $wpdb;
+        // Changing the namespace invalidates DB and persistent object-cache entries alike.
+        update_option(self::CACHE_GENERATION, wp_generate_uuid4(), false);
+    }
 
-        $transient_prefix = $wpdb->esc_like('_transient_srp_rel_') . '%';
-        $timeout_prefix = $wpdb->esc_like('_transient_timeout_srp_rel_') . '%';
+    public function settings_changed($old_value, $new_value) {
+        if ($old_value !== $new_value) {
+            $this->flush_related_cache();
+        }
+    }
 
-        $wpdb->query($wpdb->prepare(
-            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-            $transient_prefix,
-            $timeout_prefix
-        ));
+    public function deactivate() {
+        wp_unschedule_hook(self::AI_HOOK);
+        $this->flush_related_cache();
     }
 
     public function auto_append_related($content) {
-        if (!is_singular('post')) {
+        if (!is_singular('post') || !in_the_loop() || !is_main_query() || get_the_ID() !== get_queried_object_id()) {
+            return $content;
+        }
+
+        $source = (string) get_post_field('post_content', get_the_ID());
+        if (has_block('kreativ-smart-related-posts/related-posts', $source)
+            || has_shortcode($source, 'smart_related_posts')
+            || has_shortcode($source, 'kreativ_related_articles')
+            || has_shortcode($content, 'smart_related_posts')
+            || has_shortcode($content, 'kreativ_related_articles')
+            || strpos($content, 'data-ksrp-related="1"') !== false) {
             return $content;
         }
 
@@ -637,7 +664,7 @@ class Kreativ_Smart_Related_Posts {
 
         return $this->render_related(get_the_ID(), [
             'layout'    => sanitize_text_field($atts['layout']),
-            'limit'     => max(1, intval($atts['posts'])),
+            'limit'     => max(1, min(12, intval($atts['posts']))),
             'excerpt'   => !empty($atts['excerpt']),
             'thumbnail' => !empty($atts['thumbnail']),
             'target'    => sanitize_key($atts['target']),
@@ -654,7 +681,7 @@ class Kreativ_Smart_Related_Posts {
 
         $opt = $this->settings();
         $title = isset($opt['title']) ? $opt['title'] : '';
-        $posts = $this->get_related_posts($post_id, $args['limit']);
+        $posts = $this->get_related_posts($post_id, max(1, min(12, intval($args['limit']))));
         if (empty($posts)) {
             return '';
         }
@@ -666,11 +693,10 @@ class Kreativ_Smart_Related_Posts {
         $show_category = !empty($args['category']);
         $heading_tag = isset($args['heading']) && in_array($args['heading'], ['h2', 'h3', 'h4'], true) ? $args['heading'] : 'h3';
         $link_target = isset($args['target']) && $args['target'] === 'new' ? 'new' : 'same';
-        $link_attrs = $link_target === 'new' ? ' target="_blank" rel="noopener noreferrer"' : '';
 
         ob_start();
         ?>
-        <section class="srp-related">
+        <section class="srp-related" data-ksrp-related="1">
             <?php if ($title !== '') : ?>
                 <div class="srp-titlebar"><span class="srp-dot"></span><<?php echo tag_escape($heading_tag); ?> class="srp-titletext"><?php echo esc_html($title); ?></<?php echo tag_escape($heading_tag); ?>></div>
             <?php endif; ?>
@@ -678,13 +704,13 @@ class Kreativ_Smart_Related_Posts {
                 <ul class="srp-grid">
                     <?php foreach ($posts as $p) : ?>
                         <li class="srp-card">
-                            <a href="<?php echo esc_url(get_permalink($p)); ?>" aria-label="<?php echo esc_attr(get_the_title($p)); ?>"<?php echo $link_attrs; ?>>
+                            <a href="<?php echo esc_url(get_permalink($p)); ?>" aria-label="<?php echo esc_attr(get_the_title($p)); ?>"<?php if ($link_target === 'new') : ?> target="_blank" rel="noopener noreferrer"<?php endif; ?>>
                                 <?php if ($show_thumbnail && has_post_thumbnail($p)) : ?>
                                     <div class="srp-thumb"><?php echo get_the_post_thumbnail($p, 'medium_large'); ?></div>
                                 <?php endif; ?>
                                 <div class="srp-content">
                                     <h4 class="srp-title"><?php echo esc_html(get_the_title($p)); ?></h4>
-                                    <?php echo $this->render_post_meta($p, $show_date, $show_category); ?>
+                                    <?php echo wp_kses_post($this->render_post_meta($p, $show_date, $show_category)); ?>
                                     <?php if ($show_excerpt) : ?>
                                         <p class="srp-excerpt"><?php echo esc_html(wp_trim_words(wp_strip_all_tags(get_the_excerpt($p)), 20)); ?></p>
                                     <?php endif; ?>
@@ -697,8 +723,8 @@ class Kreativ_Smart_Related_Posts {
                 <ul class="srp-list">
                     <?php foreach ($posts as $p) : ?>
                         <li>
-                            <a href="<?php echo esc_url(get_permalink($p)); ?>"<?php echo $link_attrs; ?>><strong><?php echo esc_html(get_the_title($p)); ?></strong></a>
-                            <?php echo $this->render_post_meta($p, $show_date, $show_category); ?>
+                            <a href="<?php echo esc_url(get_permalink($p)); ?>"<?php if ($link_target === 'new') : ?> target="_blank" rel="noopener noreferrer"<?php endif; ?>><strong><?php echo esc_html(get_the_title($p)); ?></strong></a>
+                            <?php echo wp_kses_post($this->render_post_meta($p, $show_date, $show_category)); ?>
                             <?php if ($show_excerpt) : ?>
                                 <div class="srp-excerpt"><?php echo esc_html(wp_trim_words(wp_strip_all_tags(get_the_excerpt($p)), 22)); ?></div>
                             <?php endif; ?>
@@ -708,7 +734,7 @@ class Kreativ_Smart_Related_Posts {
             <?php else : ?>
                 <div class="srp-minimal">
                     <?php foreach ($posts as $p) : ?>
-                        <a class="srp-pill" href="<?php echo esc_url(get_permalink($p)); ?>"<?php echo $link_attrs; ?>><?php echo esc_html(get_the_title($p)); ?></a>
+                        <a class="srp-pill" href="<?php echo esc_url(get_permalink($p)); ?>"<?php if ($link_target === 'new') : ?> target="_blank" rel="noopener noreferrer"<?php endif; ?>><?php echo esc_html(get_the_title($p)); ?></a>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -742,48 +768,167 @@ class Kreativ_Smart_Related_Posts {
     }
 
     private function get_related_posts($post_id, $limit = 6) {
+        $limit = max(1, min(12, intval($limit)));
         $opt = $this->settings();
         $manual = $this->get_manual_related_overrides($post_id);
-        $manual_include = $manual['include'];
-        $manual_exclude = $manual['exclude'];
-        $override_signature = md5(implode(',', $manual_include) . '|' . implode(',', $manual_exclude));
-
-        $ranker_signature = intval($opt['enable_ai']) ? 'ai_' . md5((string) $opt['model']) : 'basic';
-        $cache_key = 'srp_rel_' . intval($post_id) . '_' . intval($limit) . '_' . $ranker_signature . '_' . sanitize_key($opt['fallback_mode']) . '_' . $override_signature;
+        $cache_key = $this->related_cache_key($post_id, $limit, $opt, $manual);
         $cache_ttl = max(0, intval($opt['cache_hours'])) * HOUR_IN_SECONDS;
 
         if ($cache_ttl > 0) {
             $cached = get_transient($cache_key);
-            if (is_array($cached) && !empty($cached)) {
-                return $cached;
-            }
-        }
-
-        $candidate_limit = min(60, max(12, $limit * 8));
-        $candidates = $this->get_taxonomy_candidates($post_id, $candidate_limit, $manual_exclude);
-        if (empty($candidates) && !empty($opt['fallback_mode']) && $opt['fallback_mode'] !== 'none') {
-            $candidates = $this->get_fallback_candidates($post_id, $candidate_limit, $manual_exclude, $opt['fallback_mode']);
-        }
-        $ordered = [];
-
-        if (!empty($candidates)) {
-            $ordered = $candidates;
-            if (!empty($opt['enable_ai']) && !empty($opt['api_key'])) {
-                $reordered = $this->ai_rerank($post_id, $candidates, $limit, $opt['api_key'], $opt['model']);
-                if (!empty($reordered)) {
-                    $ordered = $reordered;
+            if (is_array($cached) && isset($cached['ids']) && is_array($cached['ids'])) {
+                $valid_ids = $this->published_related_ids($cached['ids']);
+                if ($valid_ids === $cached['ids']) {
+                    if (!empty($valid_ids) && empty($cached['ai_ready'])) {
+                        $this->schedule_ai_ranking($post_id, $limit, $cache_key, $opt);
+                    }
+                    return $valid_ids;
                 }
             }
         }
 
-        $ordered = $this->merge_manual_related_overrides($post_id, $manual_include, $manual_exclude, $ordered);
+        $candidates = $this->related_candidates($post_id, $limit, $manual, $opt);
+        $ordered = $this->merge_manual_related_overrides($post_id, $manual['include'], $manual['exclude'], $candidates);
         $ordered = array_slice($ordered, 0, $limit);
 
         if ($cache_ttl > 0) {
-            set_transient($cache_key, $ordered, $cache_ttl);
+            set_transient($cache_key, ['ids' => $ordered, 'ai_ready' => false], $cache_ttl);
+            if (!empty($candidates)) {
+                $this->schedule_ai_ranking($post_id, $limit, $cache_key, $opt);
+            }
         }
 
         return $ordered;
+    }
+
+    private function related_cache_key($post_id, $limit, $opt, $manual) {
+        return 'srp_rel_' . md5(wp_json_encode([
+            self::VERSION,
+            get_option(self::CACHE_GENERATION, '1'),
+            intval($post_id),
+            intval($limit),
+            $opt['fallback_mode'],
+            !empty($opt['enable_ai']),
+            $opt['model'],
+            hash('sha256', (string) $opt['api_key']),
+            $manual,
+        ]));
+    }
+
+    private function published_related_ids($ids) {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) {
+            return [];
+        }
+
+        return array_map('intval', get_posts([
+            'post_type'           => 'post',
+            'post_status'         => 'publish',
+            'post__in'            => $ids,
+            'orderby'             => 'post__in',
+            'posts_per_page'      => count($ids),
+            'fields'              => 'ids',
+            'suppress_filters'    => false,
+        ]));
+    }
+
+    private function related_candidates($post_id, $limit, $manual, $opt) {
+        $candidate_limit = min(60, max(12, $limit * 8));
+        $candidates = $this->get_taxonomy_candidates($post_id, $candidate_limit, $manual['exclude']);
+        if (empty($candidates) && in_array($opt['fallback_mode'], ['latest', 'author'], true)) {
+            $candidates = $this->get_fallback_candidates($post_id, $candidate_limit, $manual['exclude'], $opt['fallback_mode']);
+        }
+        return $candidates;
+    }
+
+    private function schedule_ai_ranking($post_id, $limit, $cache_key, $opt) {
+        if (empty($opt['enable_ai']) || empty($opt['api_key']) || intval($opt['cache_hours']) < 1
+            || get_post_status($post_id) !== 'publish' || get_post_type($post_id) !== 'post'
+            || get_transient('ksrp_ai_retry_' . md5($cache_key))) {
+            return;
+        }
+
+        $args = [intval($post_id), intval($limit), $cache_key];
+        if (!wp_next_scheduled(self::AI_HOOK, $args)) {
+            wp_schedule_single_event(time() + 1, self::AI_HOOK, $args);
+        }
+    }
+
+    private function acquire_ai_lock($name) {
+        $expires = time() + 120;
+        if (add_option($name, $expires, '', false)) {
+            return true;
+        }
+
+        $previous = get_option($name);
+        if (!$previous || intval($previous) >= time()) {
+            return false;
+        }
+
+        // Compare-and-delete prevents one worker from removing a newer worker's lock.
+        global $wpdb;
+        $deleted = $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+            $name,
+            (string) $previous
+        ));
+        if (!$deleted) {
+            return false;
+        }
+        wp_cache_delete($name, 'options');
+        return add_option($name, $expires, '', false);
+    }
+
+    public function refresh_ai_ranking($post_id, $limit, $cache_key) {
+        $limit = max(1, min(12, intval($limit)));
+        $opt = $this->settings();
+        $manual = $this->get_manual_related_overrides($post_id);
+        if (empty($opt['enable_ai']) || empty($opt['api_key']) || intval($opt['cache_hours']) < 1
+            || get_post_status($post_id) !== 'publish' || get_post_type($post_id) !== 'post'
+            || $cache_key !== $this->related_cache_key($post_id, $limit, $opt, $manual)
+            || get_transient('ksrp_ai_retry_' . md5($cache_key))) {
+            return;
+        }
+
+        $lock = 'ksrp_ai_lock_' . md5($cache_key);
+        if (!$this->acquire_ai_lock($lock)) {
+            return;
+        }
+
+        try {
+            $cached = get_transient($cache_key);
+            if (is_array($cached) && !empty($cached['ai_ready'])) {
+                return;
+            }
+
+            $candidates = $this->related_candidates($post_id, $limit, $manual, $opt);
+            if (empty($candidates)) {
+                if (is_array($cached) && isset($cached['ids'])) {
+                    $cached['ai_ready'] = true;
+                    set_transient($cache_key, $cached, intval($opt['cache_hours']) * HOUR_IN_SECONDS);
+                }
+                return;
+            }
+            $ordered = $this->ai_rerank($post_id, $candidates, $limit, $opt['api_key'], $opt['model']);
+            if (empty($ordered)) {
+                set_transient('ksrp_ai_retry_' . md5($cache_key), 1, 5 * MINUTE_IN_SECONDS);
+                return;
+            }
+
+            $current = $this->settings();
+            $current_manual = $this->get_manual_related_overrides($post_id);
+            if ($cache_key !== $this->related_cache_key($post_id, $limit, $current, $current_manual)) {
+                return;
+            }
+            $ordered = $this->published_related_ids($ordered);
+            $ordered = $this->merge_manual_related_overrides($post_id, $manual['include'], $manual['exclude'], $ordered);
+            set_transient($cache_key, [
+                'ids'      => array_slice($ordered, 0, $limit),
+                'ai_ready' => true,
+            ], intval($opt['cache_hours']) * HOUR_IN_SECONDS);
+        } finally {
+            delete_option($lock);
+        }
     }
 
     private function get_taxonomy_candidates($post_id, $limit, $exclude_ids = []) {
@@ -816,76 +961,38 @@ class Kreativ_Smart_Related_Posts {
 
         $blocked_ids = array_values(array_unique(array_merge([intval($post_id)], array_map('intval', $exclude_ids))));
 
-        $q = new WP_Query([
-            'post_type'           => 'post',
-            'post_status'         => 'publish',
-            'post__not_in'        => $blocked_ids,
-            'posts_per_page'      => intval($limit),
-            'ignore_sticky_posts' => true,
-            'tax_query'           => $tax_query,
-            'orderby'             => 'date',
-            'order'               => 'DESC',
-            'fields'              => 'ids',
-        ]);
+        global $wpdb;
+        // Score every match in SQL before LIMIT, without loading the full archive into PHP.
+        $category_condition = empty($terms_cat) ? '0 = 1' : "tt.taxonomy = 'category' AND tt.term_id IN (" . implode(',', $terms_cat) . ')';
+        $tag_condition = empty($terms_tag) ? '0 = 1' : "tt.taxonomy = 'post_tag' AND tt.term_id IN (" . implode(',', $terms_tag) . ')';
+        $from = "FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tr.object_id = {$wpdb->posts}.ID";
+        $score = "(SELECT COALESCE(SUM(CASE WHEN {$category_condition} THEN 4 WHEN {$tag_condition} THEN 2 ELSE 0 END), 0) {$from})";
+        $category_count = "(SELECT COUNT(*) {$from} AND ({$category_condition}))";
+        $order = static function ($orderby, $query) use ($post_id, $wpdb, $score, $category_count) {
+            if ($query->get('ksrp_source_id') !== intval($post_id)) {
+                return $orderby;
+            }
+            return "{$score} DESC, {$category_count} DESC, {$wpdb->posts}.post_date DESC, {$wpdb->posts}.ID DESC";
+        };
 
-        $ids = is_array($q->posts) ? array_map('intval', $q->posts) : [];
-        wp_reset_postdata();
-
-        if (empty($ids)) {
-            return [];
+        add_filter('posts_orderby', $order, 10, 2);
+        try {
+            $q = new WP_Query([
+                'post_type'           => 'post',
+                'post_status'         => 'publish',
+                'post__not_in'        => $blocked_ids,
+                'posts_per_page'      => intval($limit),
+                'ignore_sticky_posts' => true,
+                'no_found_rows'       => true,
+                'tax_query'           => $tax_query,
+                'fields'              => 'ids',
+                'ksrp_source_id'      => intval($post_id),
+            ]);
+        } finally {
+            remove_filter('posts_orderby', $order, 10);
         }
 
-        $cat_lookup = array_fill_keys($terms_cat, true);
-        $tag_lookup = array_fill_keys($terms_tag, true);
-        $metrics = [];
-
-        foreach ($ids as $candidate_id) {
-            $metrics[$candidate_id] = [
-                'id'        => $candidate_id,
-                'cat_match' => 0,
-                'tag_match' => 0,
-                'date'      => strtotime((string) get_post_field('post_date_gmt', $candidate_id)),
-            ];
-        }
-
-        $related_terms = wp_get_object_terms($ids, ['category', 'post_tag'], ['fields' => 'all_with_object_id']);
-        if (!is_wp_error($related_terms) && is_array($related_terms)) {
-            foreach ($related_terms as $term) {
-                if (!isset($metrics[$term->object_id])) {
-                    continue;
-                }
-
-                $term_id = intval($term->term_id);
-                if ($term->taxonomy === 'category' && isset($cat_lookup[$term_id])) {
-                    $metrics[$term->object_id]['cat_match']++;
-                }
-                if ($term->taxonomy === 'post_tag' && isset($tag_lookup[$term_id])) {
-                    $metrics[$term->object_id]['tag_match']++;
-                }
-            }
-        }
-
-        $scored = array_values($metrics);
-        usort($scored, static function ($a, $b) {
-            $score_a = ($a['cat_match'] * 4) + ($a['tag_match'] * 2);
-            $score_b = ($b['cat_match'] * 4) + ($b['tag_match'] * 2);
-
-            if ($score_a !== $score_b) {
-                return $score_b <=> $score_a;
-            }
-            if ($a['cat_match'] !== $b['cat_match']) {
-                return $b['cat_match'] <=> $a['cat_match'];
-            }
-            if ($a['tag_match'] !== $b['tag_match']) {
-                return $b['tag_match'] <=> $a['tag_match'];
-            }
-
-            return $b['date'] <=> $a['date'];
-        });
-
-        return array_values(array_map(static function ($row) {
-            return intval($row['id']);
-        }, $scored));
+        return is_array($q->posts) ? array_map('intval', $q->posts) : [];
     }
 
     private function get_fallback_candidates($post_id, $limit, $exclude_ids, $mode) {
@@ -1079,29 +1186,24 @@ class Kreativ_Smart_Related_Posts {
             true
         );
         wp_set_script_translations('srp-block', 'kreativ-smart-related-posts', plugin_dir_path(__FILE__) . 'languages');
+        $metadata = json_decode(file_get_contents(__DIR__ . '/block.json'), true);
+        $api_version = version_compare(get_bloginfo('version'), '6.3', '>=') ? 3 : 2;
+        wp_add_inline_script('srp-block', 'window.ksrpBlockAttributes = ' . wp_json_encode($metadata['attributes']) . '; window.ksrpBlockApiVersion = ' . intval($api_version) . ';', 'before');
 
-        register_block_type('kreativ-smart-related-posts/related-posts', [
-            'editor_script'   => 'srp-block',
-            'render_callback' => function ($attrs) {
-                $opt = $this->settings();
-                $layout = isset($attrs['layout']) ? sanitize_text_field($attrs['layout']) : $opt['layout'];
-                $posts = isset($attrs['posts']) ? intval($attrs['posts']) : intval($opt['posts_per']);
-                $excerpt = isset($attrs['excerpt']) ? !empty($attrs['excerpt']) : !empty($opt['show_excerpt']);
-                $thumbnail = isset($attrs['thumbnail']) ? !empty($attrs['thumbnail']) : !empty($opt['show_thumbnail']);
-                $target = isset($attrs['target']) ? sanitize_key($attrs['target']) : $opt['link_target'];
-                $date = isset($attrs['date']) ? !empty($attrs['date']) : !empty($opt['show_date']);
-                $category = isset($attrs['category']) ? !empty($attrs['category']) : !empty($opt['show_category']);
-                $heading = isset($attrs['heading']) ? sanitize_key($attrs['heading']) : $opt['heading_tag'];
+        register_block_type(__DIR__ . '/block.json', [
+            'api_version' => $api_version,
+            'render_callback' => function ($attrs, $content, $block) {
+                $post_id = isset($block->context['postId']) ? intval($block->context['postId']) : get_the_ID();
                 wp_enqueue_style('srp-related-posts');
-                return $this->render_related(get_the_ID(), [
-                    'layout'    => $layout,
-                    'limit'     => max(1, $posts),
-                    'excerpt'   => $excerpt,
-                    'thumbnail' => $thumbnail,
-                    'target'    => $target,
-                    'date'      => $date,
-                    'category'  => $category,
-                    'heading'   => $heading,
+                return $this->render_related($post_id, [
+                    'layout'    => $attrs['layout'],
+                    'limit'     => max(1, min(12, intval($attrs['posts']))),
+                    'excerpt'   => $attrs['excerpt'],
+                    'thumbnail' => $attrs['thumbnail'],
+                    'target'    => $attrs['target'],
+                    'date'      => $attrs['date'],
+                    'category'  => $attrs['category'],
+                    'heading'   => $attrs['heading'],
                 ]);
             },
         ]);

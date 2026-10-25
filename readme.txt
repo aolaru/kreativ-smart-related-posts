@@ -2,9 +2,9 @@
 Contributors: andreiolaru
 Tags: related posts, internal links, ai, openai, seo
 Requires at least: 5.8
-Tested up to: 6.9
+Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -58,6 +58,9 @@ Only when AI re-ranking is enabled and an API key is set. The plugin sends:
 = Does the plugin cache results? =
 Yes. Related post results are cached with WordPress transients to reduce repeated database lookups and API calls. Cache duration is configurable, and caches are cleared when posts or category/tag assignments change.
 
+= Does AI ranking slow down page loads? =
+Visitors receive taxonomy-based recommendations immediately. When enabled, AI ranking refreshes in the background through WP-Cron, and later visits use the cached AI results. Caching must be enabled for background AI ranking; with caching disabled, only taxonomy-based results are used. Sites with WP-Cron disabled need a server cron job to process scheduled WordPress events.
+
 = What happens when a post has no related category or tag matches? =
 You can choose to show nothing, latest posts, or posts from the same author.
 
@@ -72,13 +75,24 @@ Service: OpenAI Chat Completions API
 Endpoint: `https://api.openai.com/v1/chat/completions`  
 Purpose: Re-rank candidate related posts by semantic relevance  
 Data sent: Source post title and excerpt, plus candidate post IDs, titles, and excerpts  
-When sent: Only after you enable AI re-ranking and save a valid API key in the plugin settings
+When sent: In a scheduled background task after you enable AI re-ranking, save an API key, and enable caching. Only published source posts are ranked. Visitors receive taxonomy-based results while the task is pending.
 
 Policies:
 - https://openai.com/policies/privacy-policy
 - https://openai.com/policies/terms-of-use
 
 == Changelog ==
+
+= 1.2.1 =
+* Restricted post search to published posts and protected saved unpublished selections with per-post permission checks.
+* Fixed cache invalidation for persistent object caches and rechecked publication status on cache hits.
+* Shared block attribute defaults between PHP and JavaScript using block.json.
+* Added block API v3 support for current editors, with v2 compatibility for older WordPress versions.
+* Moved AI ranking to WP-Cron with a worker lock, retry cooldown, and stale-job protection.
+* Prevented duplicate auto-insertion alongside a shortcode or block and excluded secondary content loops.
+* Ranked all taxonomy matches by relevance before applying the candidate limit.
+* Limited block and shortcode output to 12 posts and cleaned up background tasks on deactivation.
+* Improved output escaping and translator guidance for submission checks.
 
 = 1.2.0 =
 * Added searchable manual include/exclude post picker in the post editor.
