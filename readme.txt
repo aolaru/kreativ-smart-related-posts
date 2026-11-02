@@ -1,10 +1,10 @@
 === Kreativ Smart Related Posts ===
-Contributors: andreiolaru
+Contributors: anolaru
 Tags: related posts, internal links, ai, openai, seo
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -18,7 +18,7 @@ It works out of the box with taxonomy-based related posts and can optionally use
 
 Features:
 - Automatic related posts on single posts
-- Shortcode support: `[smart_related_posts]`
+- Shortcode support: `[kreasmre_related_posts]`
 - Dynamic block for the block editor
 - Multiple layouts: Grid, List, Minimal
 - Style controls for accent color, thumbnails, image ratio, grid columns, and card radius
@@ -30,7 +30,11 @@ Features:
 - Built-in caching for performance
 
 Backwards compatibility:
-- Also supports legacy shortcode `[kreativ_related_articles]`.
+- Existing installations retain the legacy shortcodes `[smart_related_posts]` and `[kreativ_related_articles]` when those names are not already registered by another plugin.
+
+== Source Code ==
+
+All plugin source files, including the block editor JavaScript and CSS, are included in the plugin. No build step is required. The maintained source is available at https://github.com/aolaru/kreativ-smart-related-posts.
 
 == Installation ==
 
@@ -48,7 +52,7 @@ Backwards compatibility:
 == Frequently Asked Questions ==
 
 = Does this plugin require OpenAI? =
-No. Core related-post matching works without OpenAI. AI re-ranking is optional.
+No. Core related-post matching works without AI. AI re-ranking is optional and supports an OpenAI API key or the WordPress AI Client on WordPress 7.0 and later.
 
 = What data is sent to OpenAI? =
 Only when AI re-ranking is enabled and an API key is set. The plugin sends:
@@ -71,6 +75,8 @@ No.
 
 This plugin can connect to OpenAI only if you enable AI re-ranking and provide an API key.
 
+Alternatively, when you explicitly select the WordPress AI Client, source post titles and excerpts and candidate IDs, titles and excerpts are sent to the AI provider configured for your site. Consult that provider's privacy policy and terms before enabling it. This option requires WordPress 7.0 or later and a configured text-generation provider. No external AI request is made by default.
+
 Service: OpenAI Chat Completions API  
 Endpoint: `https://api.openai.com/v1/chat/completions`  
 Purpose: Re-rank candidate related posts by semantic relevance  
@@ -82,6 +88,12 @@ Policies:
 - https://openai.com/policies/terms-of-use
 
 == Changelog ==
+
+= 1.2.2 =
+* Added distinctive prefixes and backwards-compatible migration of existing settings and overrides.
+* Added optional WordPress AI Client integration on WordPress 7.0 and later.
+* Provided readable block editor CSS and documented the public source repository.
+* Corrected the WordPress.org contributor username.
 
 = 1.2.1 =
 * Restricted post search to published posts and protected saved unpublished selections with per-post permission checks.

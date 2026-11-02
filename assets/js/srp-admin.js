@@ -1,5 +1,5 @@
 (function () {
-    const config = window.srpAdmin || {};
+    const config = window.kreasmreAdmin || {};
 
     function parseIds(value) {
         return String(value || '')
@@ -91,7 +91,7 @@
     function searchPosts(picker, term) {
         const results = picker.querySelector('.srp-post-picker-results');
         const params = new URLSearchParams({
-            action: 'srp_search_posts',
+            action: 'kreasmre_search_posts',
             nonce: config.nonce || '',
             term: term
         });

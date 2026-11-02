@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Kreativ Smart Related Posts 1.2.1\n"
+"Project-Id-Version: Kreativ Smart Related Posts 1.2.2\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kreativ-smart-related-posts/\n"
 "POT-Creation-Date: 2026-10-25 00:00+0000\n"
 "MIME-Version: 1.0\n"
@@ -23,19 +23,19 @@ msgstr ""
 msgid "Enable AI re-ranking"
 msgstr ""
 
-msgid "Use OpenAI to semantically re-rank candidate posts."
+msgid "Use the selected AI provider to re-rank candidate posts."
 msgstr ""
 
 msgid "OpenAI API Key"
 msgstr ""
 
-msgid "Only required when AI re-ranking is enabled."
+msgid "Only required when using the OpenAI API key provider."
 msgstr ""
 
 msgid "OpenAI model"
 msgstr ""
 
-msgid "Model used only when AI re-ranking is enabled."
+msgid "Model used by the OpenAI API key provider."
 msgstr ""
 
 msgid "Default layout"
@@ -149,7 +149,19 @@ msgstr ""
 msgid "External Services"
 msgstr ""
 
-msgid "When AI re-ranking is enabled, this plugin sends post title/excerpt and candidate post titles/excerpts to the OpenAI API for ranking."
+msgid "When AI re-ranking is enabled, post titles, excerpts and candidate IDs are sent to the selected AI provider. The WordPress AI Client uses the provider configured on this site."
+msgstr ""
+
+msgid "AI provider"
+msgstr ""
+
+msgid "OpenAI API key"
+msgstr ""
+
+msgid "WordPress AI Client (WordPress 7.0+)"
+msgstr ""
+
+msgid "The WordPress AI Client uses the provider configured on your site. Select it only after reviewing that provider’s privacy policy."
 msgstr ""
 
 msgid "Smart Related Overrides"
