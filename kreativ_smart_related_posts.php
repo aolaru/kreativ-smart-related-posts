@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Kreativ Smart Related Posts
  * Description: Display related posts using shared categories/tags, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
- * Version: 1.2.2
+ * Version: 1.2.3
  * Author: Andrei Olaru
  * License: GPL-2.0+
  * Text Domain: kreativ-smart-related-posts
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'kreasmre_settings';
-    const VERSION = '1.2.2';
+    const VERSION = '1.2.3';
     const CACHE_GENERATION = 'kreasmre_cache_generation';
     const AI_HOOK = 'kreasmre_refresh_ai_ranking';
     const META_INCLUDE = '_kreasmre_manual_include_ids';
@@ -60,14 +60,12 @@ class Kreativ_Smart_Related_Posts {
         $this->flush_related_cache();
         $defaults = [
             'enable_ai'      => 0,
-            'api_key'        => '',
             'layout'         => 'grid',
             'posts_per'      => 6,
             'show_excerpt'   => 0,
             'auto_insert'    => 1,
             'title'          => __('Related Posts', 'kreativ-smart-related-posts'),
             'cache_hours'    => 12,
-            'model'          => 'gpt-4o-mini',
             'accent_color'   => '#00C2FF',
             'show_thumbnail' => 1,
             'image_ratio'    => 'wide',
@@ -103,15 +101,13 @@ class Kreativ_Smart_Related_Posts {
     public function settings() {
         $defaults = [
             'enable_ai'      => 0,
-            'ai_provider'    => 'openai',
-            'api_key'        => '',
+            'ai_provider'    => 'wordpress',
             'layout'         => 'grid',
             'posts_per'      => 6,
             'show_excerpt'   => 0,
             'auto_insert'    => 1,
             'title'          => __('Related Posts', 'kreativ-smart-related-posts'),
             'cache_hours'    => 12,
-            'model'          => 'gpt-4o-mini',
             'accent_color'   => '#00C2FF',
             'show_thumbnail' => 1,
             'image_ratio'    => 'wide',
@@ -127,6 +123,11 @@ class Kreativ_Smart_Related_Posts {
         $opt = get_option(self::OPTION, []);
         if (!is_array($opt)) {
             return $defaults;
+        }
+
+        // Pre-1.2.2 settings used direct OpenAI without a provider field.
+        if (!isset($opt['ai_provider']) && !empty($opt['api_key'])) {
+            $opt['ai_provider'] = 'openai';
         }
 
         return wp_parse_args($opt, $defaults);
@@ -154,27 +155,12 @@ class Kreativ_Smart_Related_Posts {
 
         add_settings_field('kreasmre_enable_ai', __('Enable AI re-ranking', 'kreativ-smart-related-posts'), function () {
             $opt = $this->settings();
-            echo '<label><input type="checkbox" name="' . esc_attr(self::OPTION) . '[enable_ai]" value="1" ' . checked(1, intval($opt['enable_ai']), false) . '/> ' . esc_html__('Use the selected AI provider to re-rank candidate posts.', 'kreativ-smart-related-posts') . '</label>';
-        }, 'kreativ-smart-related-posts', 'kreasmre_main');
-
-        add_settings_field('kreasmre_ai_provider', __('AI provider', 'kreativ-smart-related-posts'), function () {
-            $opt = $this->settings();
-            echo '<select name="' . esc_attr(self::OPTION) . '[ai_provider]">';
-            echo '<option value="openai" ' . selected($opt['ai_provider'], 'openai', false) . '>' . esc_html__('OpenAI API key', 'kreativ-smart-related-posts') . '</option>';
-            echo '<option value="wordpress" ' . selected($opt['ai_provider'], 'wordpress', false) . '>' . esc_html__('WordPress AI Client (WordPress 7.0+)', 'kreativ-smart-related-posts') . '</option>';
-            echo '</select><p class="description">' . esc_html__('The WordPress AI Client uses the provider configured on your site. Select it only after reviewing that provider’s privacy policy.', 'kreativ-smart-related-posts') . '</p>';
-        }, 'kreativ-smart-related-posts', 'kreasmre_main');
-
-        add_settings_field('kreasmre_api_key', __('OpenAI API Key', 'kreativ-smart-related-posts'), function () {
-            $opt = $this->settings();
-            echo '<input type="password" style="width:420px" name="' . esc_attr(self::OPTION) . '[api_key]" value="' . esc_attr($opt['api_key']) . '" placeholder="sk-..." autocomplete="off" />';
-            echo '<p class="description">' . esc_html__('Only required when using the OpenAI API key provider.', 'kreativ-smart-related-posts') . '</p>';
-        }, 'kreativ-smart-related-posts', 'kreasmre_main');
-
-        add_settings_field('kreasmre_model', __('OpenAI model', 'kreativ-smart-related-posts'), function () {
-            $opt = $this->settings();
-            echo '<input type="text" style="width:260px" name="' . esc_attr(self::OPTION) . '[model]" value="' . esc_attr($opt['model']) . '" placeholder="gpt-4o-mini" />';
-            echo '<p class="description">' . esc_html__('Model used by the OpenAI API key provider.', 'kreativ-smart-related-posts') . '</p>';
+            $enabled = $opt['ai_provider'] === 'wordpress' && !empty($opt['enable_ai']);
+            echo '<label><input type="checkbox" name="' . esc_attr(self::OPTION) . '[enable_ai]" value="1" ' . checked(true, $enabled, false) . '/> ' . esc_html__('Use the WordPress AI Client to re-rank candidate posts.', 'kreativ-smart-related-posts') . '</label>';
+            echo '<p class="description">' . esc_html__('Requires WordPress 7.0 or later and a configured text-generation provider. Review the provider\'s privacy policy before enabling.', 'kreativ-smart-related-posts') . '</p>';
+            if ($opt['ai_provider'] !== 'wordpress' && !empty($opt['enable_ai'])) {
+                echo '<p class="description">' . esc_html__('The previous direct OpenAI integration has been removed. Configure a WordPress AI provider and enable this option to resume AI re-ranking.', 'kreativ-smart-related-posts') . '</p>';
+            }
         }, 'kreativ-smart-related-posts', 'kreasmre_main');
 
         add_settings_field('kreasmre_layout', __('Default layout', 'kreativ-smart-related-posts'), function () {
@@ -300,11 +286,6 @@ class Kreativ_Smart_Related_Posts {
             $layout = 'grid';
         }
 
-        $model = isset($input['model']) ? sanitize_text_field($input['model']) : $current['model'];
-        if ($model === '') {
-            $model = 'gpt-4o-mini';
-        }
-
         $accent_color = isset($input['accent_color']) ? sanitize_hex_color($input['accent_color']) : $current['accent_color'];
         if (!$accent_color) {
             $accent_color = '#00C2FF';
@@ -330,21 +311,15 @@ class Kreativ_Smart_Related_Posts {
             $heading_tag = 'h3';
         }
 
-        $provider = isset($input['ai_provider']) ? sanitize_key($input['ai_provider']) : 'openai';
-        if (!in_array($provider, ['openai', 'wordpress'], true)) {
-            $provider = 'openai';
-        }
         return [
             'enable_ai'      => empty($input['enable_ai']) ? 0 : 1,
-            'ai_provider'    => $provider,
-            'api_key'        => isset($input['api_key']) ? sanitize_text_field($input['api_key']) : '',
+            'ai_provider'    => 'wordpress',
             'layout'         => $layout,
             'posts_per'      => isset($input['posts_per']) ? max(1, min(12, intval($input['posts_per']))) : 6,
             'show_excerpt'   => empty($input['show_excerpt']) ? 0 : 1,
             'auto_insert'    => empty($input['auto_insert']) ? 0 : 1,
             'title'          => isset($input['title']) ? sanitize_text_field($input['title']) : __('Related Posts', 'kreativ-smart-related-posts'),
             'cache_hours'    => isset($input['cache_hours']) ? max(0, min(168, intval($input['cache_hours']))) : 12,
-            'model'          => $model,
             'accent_color'   => $accent_color,
             'show_thumbnail' => empty($input['show_thumbnail']) ? 0 : 1,
             'image_ratio'    => $image_ratio,
@@ -375,7 +350,6 @@ class Kreativ_Smart_Related_Posts {
             <hr />
             <h2><?php esc_html_e('External Services', 'kreativ-smart-related-posts'); ?></h2>
             <p><?php esc_html_e('When AI re-ranking is enabled, post titles, excerpts and candidate IDs are sent to the selected AI provider. The WordPress AI Client uses the provider configured on this site.', 'kreativ-smart-related-posts'); ?></p>
-            <p><a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener noreferrer">OpenAI Privacy Policy</a> | <a href="https://openai.com/policies/terms-of-use" target="_blank" rel="noopener noreferrer">OpenAI Terms of Use</a></p>
         </div>
         <?php
     }
@@ -845,8 +819,6 @@ class Kreativ_Smart_Related_Posts {
             $opt['fallback_mode'],
             !empty($opt['enable_ai']),
             $opt['ai_provider'],
-            $opt['model'],
-            hash('sha256', (string) $opt['api_key']),
             $manual,
         ]));
     }
@@ -945,7 +917,7 @@ class Kreativ_Smart_Related_Posts {
                 }
                 return;
             }
-            $ordered = $this->ai_rerank($post_id, $candidates, $limit, $opt['api_key'], $opt['model'], $opt['ai_provider']);
+            $ordered = $this->ai_rerank($post_id, $candidates, $limit);
             if (empty($ordered)) {
                 set_transient('kreasmre_ai_retry_' . md5($cache_key), 1, 5 * MINUTE_IN_SECONDS);
                 return;
@@ -1145,7 +1117,7 @@ class Kreativ_Smart_Related_Posts {
             return false;
         }
         if ($opt['ai_provider'] !== 'wordpress') {
-            return !empty($opt['api_key']);
+            return false;
         }
         if (!function_exists('wp_ai_client_prompt')) {
             return false;
@@ -1157,7 +1129,7 @@ class Kreativ_Smart_Related_Posts {
         }
     }
 
-    private function ai_rerank($post_id, $candidate_ids, $limit, $api_key, $model, $provider = 'openai') {
+    private function ai_rerank($post_id, $candidate_ids, $limit) {
         $post = get_post($post_id);
         if (!$post) {
             return [];
@@ -1184,45 +1156,13 @@ class Kreativ_Smart_Related_Posts {
             'candidates' => $candidates,
         ];
 
-        if ($provider === 'wordpress') {
-            try {
-                $content = wp_ai_client_prompt()->with_text($sys . "\n" . wp_json_encode($user))->using_temperature(0.2)->generate_text();
-            } catch (Throwable $error) {
-                return [];
-            }
-            if (is_wp_error($content) || !is_string($content)) {
-                return [];
-            }
-        } else {
-            $body = [
-                'model'       => sanitize_text_field($model),
-                'messages'    => [
-                    ['role' => 'system', 'content' => $sys],
-                    ['role' => 'user', 'content' => wp_json_encode($user)],
-                ],
-                'temperature' => 0.2,
-            ];
-
-            $response = wp_remote_post('https://api.openai.com/v1/chat/completions', [
-                'timeout' => 20,
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $api_key,
-                    'Content-Type'  => 'application/json',
-                ],
-                'body'    => wp_json_encode($body),
-            ]);
-
-            if (is_wp_error($response)) {
-                return [];
-            }
-
-            $status = wp_remote_retrieve_response_code($response);
-            if ($status < 200 || $status >= 300) {
-                return [];
-            }
-
-            $data = json_decode(wp_remote_retrieve_body($response), true);
-            $content = isset($data['choices'][0]['message']['content']) ? $data['choices'][0]['message']['content'] : '';
+        try {
+            $content = wp_ai_client_prompt()->with_text($sys . "\n" . wp_json_encode($user))->using_temperature(0.2)->generate_text();
+        } catch (Throwable $error) {
+            return [];
+        }
+        if (is_wp_error($content) || !is_string($content)) {
+            return [];
         }
 
         $ids = json_decode(trim($content), true);

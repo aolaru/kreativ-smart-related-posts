@@ -1,10 +1,10 @@
 === Kreativ Smart Related Posts ===
 Contributors: anolaru
-Tags: related posts, internal links, ai, openai, seo
+Tags: related posts, internal links, ai, seo
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.2
+Stable tag: 1.2.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,7 +14,7 @@ Display related posts based on shared categories/tags, with optional AI re-ranki
 
 Kreativ Smart Related Posts helps you keep visitors engaged by showing relevant articles below your content.
 
-It works out of the box with taxonomy-based related posts and can optionally use OpenAI to re-rank the candidate posts for stronger semantic relevance.
+It works out of the box with taxonomy-based related posts and can optionally use the WordPress AI Client to re-rank candidates for stronger semantic relevance.
 
 Features:
 - Automatic related posts on single posts
@@ -26,11 +26,12 @@ Features:
 - Optional post date and category display
 - Configurable fallback posts when no taxonomy match exists
 - Manual include/exclude picker per post
-- Optional AI re-ranking via OpenAI (disabled by default)
+- Optional AI re-ranking via the WordPress AI Client (disabled by default)
 - Built-in caching for performance
 
 Backwards compatibility:
 - Existing installations retain the legacy shortcodes `[smart_related_posts]` and `[kreativ_related_articles]` when those names are not already registered by another plugin.
+- Sites previously using direct OpenAI must configure a WordPress AI provider and explicitly re-enable AI re-ranking. Older WordPress versions continue to display taxonomy-based recommendations.
 
 == Source Code ==
 
@@ -51,11 +52,11 @@ All plugin source files, including the block editor JavaScript and CSS, are incl
 
 == Frequently Asked Questions ==
 
-= Does this plugin require OpenAI? =
-No. Core related-post matching works without AI. AI re-ranking is optional and supports an OpenAI API key or the WordPress AI Client on WordPress 7.0 and later.
+= Does this plugin require AI? =
+No. Core related-post matching works without AI. Optional AI re-ranking requires WordPress 7.0 or later and a configured text-generation provider for the WordPress AI Client.
 
-= What data is sent to OpenAI? =
-Only when AI re-ranking is enabled and an API key is set. The plugin sends:
+= What data is sent to the configured AI provider? =
+Only when AI re-ranking is enabled and a provider is configured, the plugin sends:
 - Source post title and excerpt
 - Candidate post IDs, titles, and excerpts
 
@@ -73,21 +74,13 @@ No.
 
 == External Services ==
 
-This plugin can connect to OpenAI only if you enable AI re-ranking and provide an API key.
-
-Alternatively, when you explicitly select the WordPress AI Client, source post titles and excerpts and candidate IDs, titles and excerpts are sent to the AI provider configured for your site. Consult that provider's privacy policy and terms before enabling it. This option requires WordPress 7.0 or later and a configured text-generation provider. No external AI request is made by default.
-
-Service: OpenAI Chat Completions API  
-Endpoint: `https://api.openai.com/v1/chat/completions`  
-Purpose: Re-rank candidate related posts by semantic relevance  
-Data sent: Source post title and excerpt, plus candidate post IDs, titles, and excerpts  
-When sent: In a scheduled background task after you enable AI re-ranking, save an API key, and enable caching. Only published source posts are ranked. Visitors receive taxonomy-based results while the task is pending.
-
-Policies:
-- https://openai.com/policies/privacy-policy
-- https://openai.com/policies/terms-of-use
+When you enable AI re-ranking, source post titles and excerpts and candidate IDs, titles and excerpts are sent through the WordPress AI Client to the provider configured for your site. Consult that provider's privacy policy and terms before enabling it. This requires WordPress 7.0 or later, a configured text-generation provider, and caching. Requests run in a scheduled background task for published posts. No external AI request is made by default.
 
 == Changelog ==
+
+= 1.2.3 =
+* Removed the direct OpenAI integration. AI re-ranking now uses the WordPress AI Client only.
+* Existing direct OpenAI users must configure a WordPress AI provider and explicitly re-enable AI re-ranking.
 
 = 1.2.2 =
 * Added distinctive prefixes and backwards-compatible migration of existing settings and overrides.

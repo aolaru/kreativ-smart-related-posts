@@ -57,7 +57,7 @@ function kreasmre_post($title, $categories, $date = '2026-01-01 12:00:00', $stat
 wp_set_current_user(1);
 $migrated = $plugin->settings();
 kreasmre_check($migrated['layout'] === 'list' && intval($migrated['posts_per']) === 4 && $migrated['api_key'] === 'legacy-test-key', 'Legacy settings migrate without losing values');
-kreasmre_check($migrated['ai_provider'] === 'openai', 'Existing sites retain their selected OpenAI provider');
+kreasmre_check($migrated['ai_provider'] === 'openai' && !kreasmre_call('ai_available', $migrated), 'Legacy provider selection is retained but cannot make AI requests');
 kreasmre_check(shortcode_exists('kreasmre_related_posts') && shortcode_exists('smart_related_posts') && shortcode_exists('kreativ_related_articles'), 'New shortcode and legacy aliases are registered on upgraded sites');
 $core_ai = $migrated;
 $core_ai['enable_ai'] = 1;
@@ -143,81 +143,15 @@ delete_post_meta($source, Kreativ_Smart_Related_Posts::META_EXCLUDE);
 
 $settings = $plugin->settings();
 $settings['enable_ai'] = 1;
-$settings['api_key'] = 'mocked-test-key';
-update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
-$calls = 0;
-$fail_http = false;
-$http = static function ($preempt, $args, $url) use (&$calls, &$fail_http, $weak, $strong, $draft) {
-    if ($url !== 'https://api.openai.com/v1/chat/completions') {
-        return $preempt;
-    }
-    $calls++;
-    if ($fail_http) {
-        return new WP_Error('kreasmre_mock_timeout', 'Simulated API timeout');
-    }
-    return ['headers' => [], 'response' => ['code' => 200, 'message' => 'OK'], 'body' => wp_json_encode([
-        'choices' => [['message' => ['content' => wp_json_encode([$weak[64], $strong, $draft])]]],
-    ])];
-};
-add_filter('pre_http_request', $http, 10, 3);
-$key = kreasmre_key($source);
-kreasmre_call('get_related_posts', $source, 6);
-kreasmre_call('get_related_posts', $source, 6);
-kreasmre_check($calls === 0, 'Visitor requests never call the AI API');
-$job_args = [$source, 6, $key];
-kreasmre_check((bool) wp_next_scheduled(Kreativ_Smart_Related_Posts::AI_HOOK, $job_args), 'Visitor request schedules background AI work');
-$matching_jobs = 0;
-foreach (_get_cron_array() as $events) {
-    foreach ($events[Kreativ_Smart_Related_Posts::AI_HOOK] ?? [] as $event) {
-        $matching_jobs += $event['args'] === $job_args ? 1 : 0;
-    }
-}
-kreasmre_check($matching_jobs === 1, 'Repeated visitors schedule only one matching job');
-$lock = 'kreasmre_ai_lock_' . md5($key);
-add_option($lock, time() + 120, '', false);
-$plugin->refresh_ai_ranking(...$job_args);
-kreasmre_check($calls === 0, 'Worker lock prevents duplicate external requests');
-update_option($lock, time() - 1, false);
-do_action(Kreativ_Smart_Related_Posts::AI_HOOK, ...$job_args);
-kreasmre_check($calls === 1 && kreasmre_call('get_related_posts', $source, 6)[0] === $weak[64], 'Background worker stores valid AI ordering');
-kreasmre_check(get_option($lock) === false, 'Worker recovers an expired lock and releases it after success');
-kreasmre_check(!in_array($draft, kreasmre_call('get_related_posts', $source, 6), true), 'Non-candidate AI response IDs are discarded');
-$plugin->refresh_ai_ranking(...$job_args);
-kreasmre_check($calls === 1, 'Completed jobs are idempotent');
-wp_update_post(['ID' => $source, 'post_title' => 'KSRP source edited ' . $suffix]);
-$plugin->refresh_ai_ranking(...$job_args);
-kreasmre_check($calls === 1, 'Stale jobs skip changed content');
-$fail_http = true;
-$key = kreasmre_key($source);
-$basic = kreasmre_call('get_related_posts', $source, 6);
-$plugin->refresh_ai_ranking($source, 6, $key);
-$plugin->refresh_ai_ranking($source, 6, $key);
-kreasmre_check($calls === 2 && kreasmre_call('get_related_posts', $source, 6) === $basic, 'AI failures retain basic results and enforce retry cooldown');
-kreasmre_check(get_option('kreasmre_ai_lock_' . md5($key)) === false, 'Worker releases its lock after failure');
-$fail_http = false;
-$settings['model'] = 'mock-stale-job';
+$settings['ai_provider'] = 'openai';
 update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
 $key = kreasmre_key($source);
 kreasmre_call('get_related_posts', $source, 6);
-$edit_during_request = static function ($response, $args, $url) use ($source) {
-    if ($url === 'https://api.openai.com/v1/chat/completions') {
-        wp_update_post(['ID' => $source, 'post_title' => 'Edited during AI request']);
-    }
-    return $response;
-};
-add_filter('pre_http_request', $edit_during_request, 11, 3);
-$plugin->refresh_ai_ranking($source, 6, $key);
-remove_filter('pre_http_request', $edit_during_request, 11);
-kreasmre_check(empty(get_transient($key)['ai_ready']), 'Content changed during an API request is not overwritten by stale AI results');
-$calls_before = $calls;
-wp_update_post(['ID' => $source, 'post_status' => 'draft']);
-$key = kreasmre_key($source);
-kreasmre_call('get_related_posts', $source, 6);
-$plugin->refresh_ai_ranking($source, 6, $key);
-kreasmre_check($calls === $calls_before && !wp_next_scheduled(Kreativ_Smart_Related_Posts::AI_HOOK, [$source, 6, $key]), 'Draft source posts never schedule or call external AI');
-wp_update_post(['ID' => $source, 'post_status' => 'publish']);
-remove_filter('pre_http_request', $http, 10);
-
+kreasmre_check(!kreasmre_call('ai_available', $settings), 'Legacy direct AI settings do not silently switch providers');
+kreasmre_check(!wp_next_scheduled(Kreativ_Smart_Related_Posts::AI_HOOK, [$source, 6, $key]), 'Legacy direct AI settings do not schedule AI work');
+$settings['ai_provider'] = 'wordpress';
+update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
+kreasmre_check(!kreasmre_call('ai_available', $settings), 'An unconfigured WordPress AI provider remains unavailable');
 $settings['cache_hours'] = 0;
 update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
 kreasmre_call('get_related_posts', $source, 6);

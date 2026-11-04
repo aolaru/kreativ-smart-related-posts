@@ -6,7 +6,9 @@ function register_deactivation_hook(...$args) {}
 function add_action(...$args) {}
 function add_filter(...$args) {}
 function add_shortcode(...$args) {}
-function get_option(...$args) { return false; }
+function get_option($name, $default = false) { return $GLOBALS['kreasmre_test_options'][$name] ?? $default; }
+function __($text, $domain = null) { return $text; }
+function wp_parse_args($args, $defaults) { return array_merge($defaults, $args); }
 function get_post($id) { return (object) ['ID' => $id]; }
 function get_the_title($post) { return 'Title ' . (is_object($post) ? $post->ID : $post); }
 function get_the_excerpt($post) { return 'Excerpt ' . (is_object($post) ? $post->ID : $post); }
@@ -37,12 +39,28 @@ $settings = ['enable_ai' => 1, 'ai_provider' => 'wordpress', 'api_key' => ''];
 if (!$available->invoke($plugin, $settings)) {
     throw new RuntimeException('Configured WordPress AI provider should be available.');
 }
-$result = $rank->invoke($plugin, 1, [2, 3, 4], 3, '', '', 'wordpress');
+$legacy_settings = ['enable_ai' => 1, 'ai_provider' => 'openai', 'api_key' => 'old-key'];
+if ($available->invoke($plugin, $legacy_settings)) {
+    throw new RuntimeException('Legacy direct AI settings must not silently switch providers.');
+}
+$GLOBALS['kreasmre_test_options'][Kreativ_Smart_Related_Posts::OPTION] = ['enable_ai' => 1, 'api_key' => 'old-key'];
+$old_settings = $plugin->settings();
+if ($old_settings['ai_provider'] !== 'openai' || $available->invoke($plugin, $old_settings)) {
+    throw new RuntimeException('Pre-1.2.2 settings must not silently switch providers.');
+}
+$disabled = $plugin->sanitize_settings([]);
+$enabled = $plugin->sanitize_settings(['enable_ai' => 1]);
+if ($disabled['enable_ai'] || $disabled['ai_provider'] !== 'wordpress'
+    || !$enabled['enable_ai'] || $enabled['ai_provider'] !== 'wordpress'
+    || isset($enabled['api_key']) || isset($enabled['model'])) {
+    throw new RuntimeException('Saving settings must require opt-in and discard direct integration settings.');
+}
+$result = $rank->invoke($plugin, 1, [2, 3, 4], 3);
 if ($result !== [3, 2, 4] || strpos(Kreasmre_Test_AI_Client::$prompt, 'Title 1') === false) {
     throw new RuntimeException('AI response validation or prompt construction failed.');
 }
 Kreasmre_Test_AI_Client::$result = new WP_Error();
-if ($rank->invoke($plugin, 1, [2, 3, 4], 3, '', '', 'wordpress') !== []) {
+if ($rank->invoke($plugin, 1, [2, 3, 4], 3) !== []) {
     throw new RuntimeException('AI errors should fall back to taxonomy ranking.');
 }
 Kreasmre_Test_AI_Client::$supported = false;
