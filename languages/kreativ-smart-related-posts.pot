@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Kreativ Smart Related Posts 1.2.3\n"
+"Project-Id-Version: Kreativ Smart Related Posts 1.3.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kreativ-smart-related-posts/\n"
 "POT-Creation-Date: 2026-10-25 00:00+0000\n"
 "MIME-Version: 1.0\n"
@@ -18,6 +18,51 @@ msgid "Kreativ Smart Related Posts"
 msgstr ""
 
 msgid "General"
+msgstr ""
+
+msgid "Getting started"
+msgstr ""
+
+msgid "Related posts are selected from published posts that share categories or tags. AI is optional."
+msgstr ""
+
+msgid "Automatic insertion is on for single posts. A post with no matching recommendations may show nothing."
+msgstr ""
+
+msgid "Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to a post to display recommendations."
+msgstr ""
+
+msgid "Get help or share feedback"
+msgstr ""
+
+msgid "Preview related posts"
+msgstr ""
+
+msgid "Choose a published post to preview recommendations using your saved settings. This preview uses category and tag matching, manual selections, and fallback settings; it does not run AI or schedule background work."
+msgstr ""
+
+msgid "Publish a post first to use the preview. Related recommendations need other published posts."
+msgstr ""
+
+msgid "Published post"
+msgstr ""
+
+msgid "Preview"
+msgstr ""
+
+msgid "Showing up to 25 of the most recent published posts. Save changes below before previewing new settings."
+msgstr ""
+
+msgid "That post is not available for preview. Choose a published post from the list."
+msgstr ""
+
+msgid "No related posts found for this post. Check that other published posts share a category or tag, review manual exclusions, or choose a fallback mode below."
+msgstr ""
+
+msgid "This preview does not check theme placement or cached AI ordering. Open the post on your site to verify the live result."
+msgstr ""
+
+msgid "View post"
 msgstr ""
 
 msgid "Enable AI re-ranking"

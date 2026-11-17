@@ -123,6 +123,26 @@ $excluded = kreasmre_call('get_taxonomy_candidates', $source, 60, [$strong]);
 kreasmre_check(!in_array($strong, $excluded, true), 'Candidate exclusions survive SQL relevance ranking');
 kreasmre_check(empty($wpdb->last_error), 'Relevance SQL executes without database errors');
 
+$isolated_cat = wp_insert_term('KSRP Isolated ' . $suffix, 'category')['term_id'];
+$isolated = kreasmre_post('KSRP isolated ' . $suffix, [$isolated_cat]);
+$preview_settings = $plugin->settings();
+$preview_settings['enable_ai'] = 1;
+$preview_settings['posts_per'] = 6;
+$preview_settings['fallback_mode'] = 'none';
+kreasmre_check(kreasmre_call('preview_related_posts', $isolated, $preview_settings) === [], 'Preview handles a post with no matching recommendations');
+$preview_settings['fallback_mode'] = 'latest';
+kreasmre_check(!empty(kreasmre_call('preview_related_posts', $isolated, $preview_settings)), 'Preview respects the latest-post fallback');
+$preview_settings['fallback_mode'] = 'none';
+$preview = kreasmre_call('preview_related_posts', $source, $preview_settings);
+kreasmre_check($preview[0] === $strong && count($preview) === 6, 'Preview uses ranked published recommendations and the saved limit');
+kreasmre_check(!wp_next_scheduled(Kreativ_Smart_Related_Posts::AI_HOOK, [$source, 6, kreasmre_key($source)]), 'Preview does not schedule AI work');
+update_post_meta($source, Kreativ_Smart_Related_Posts::META_INCLUDE, (string) $weak[0]);
+update_post_meta($source, Kreativ_Smart_Related_Posts::META_EXCLUDE, (string) $strong);
+$preview = kreasmre_call('preview_related_posts', $source, $preview_settings);
+kreasmre_check($preview[0] === $weak[0] && !in_array($strong, $preview, true), 'Preview respects manual includes and exclusions');
+delete_post_meta($source, Kreativ_Smart_Related_Posts::META_INCLUDE);
+delete_post_meta($source, Kreativ_Smart_Related_Posts::META_EXCLUDE);
+
 // WordPress's external-cache branch stores transients in the object-cache group.
 wp_using_ext_object_cache(true);
 $before_key = kreasmre_key($source);

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Kreativ Smart Related Posts
  * Description: Display related posts using shared categories/tags, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
- * Version: 1.2.3
+ * Version: 1.3.0
  * Author: Andrei Olaru
  * License: GPL-2.0+
  * Text Domain: kreativ-smart-related-posts
@@ -16,7 +16,7 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'kreasmre_settings';
-    const VERSION = '1.2.3';
+    const VERSION = '1.3.0';
     const CACHE_GENERATION = 'kreasmre_cache_generation';
     const AI_HOOK = 'kreasmre_refresh_ai_ranking';
     const META_INCLUDE = '_kreasmre_manual_include_ids';
@@ -337,9 +337,76 @@ class Kreativ_Smart_Related_Posts {
         if (!current_user_can('manage_options')) {
             return;
         }
+        $opt = $this->settings();
+        $recent_posts = get_posts([
+            'post_type' => 'post',
+            'post_status' => 'publish',
+            'posts_per_page' => 25,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'ignore_sticky_posts' => true,
+            'no_found_rows' => true,
+        ]);
+        $preview_requested = isset($_GET['kreasmre_preview_post']);
+        $valid_nonce = isset($_GET['kreasmre_preview_nonce']) && is_string($_GET['kreasmre_preview_nonce'])
+            && wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['kreasmre_preview_nonce'])), 'kreasmre_preview');
+        $preview_id = $valid_nonce && isset($_GET['kreasmre_preview_post']) && is_string($_GET['kreasmre_preview_post'])
+            ? absint(wp_unslash($_GET['kreasmre_preview_post'])) : 0;
+        $recent_ids = array_map(static function ($post) { return intval($post->ID); }, $recent_posts);
+        $valid_preview = $preview_id && in_array($preview_id, $recent_ids, true)
+            && get_post_type($preview_id) === 'post' && get_post_status($preview_id) === 'publish';
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'); ?></h1>
+            <div class="kreasmre-getting-started">
+                <h2><?php esc_html_e('Getting started', 'kreativ-smart-related-posts'); ?></h2>
+                <p><?php esc_html_e('Related posts are selected from published posts that share categories or tags. AI is optional.', 'kreativ-smart-related-posts'); ?></p>
+                <?php if (!empty($opt['auto_insert'])) : ?>
+                    <p><?php esc_html_e('Automatic insertion is on for single posts. A post with no matching recommendations may show nothing.', 'kreativ-smart-related-posts'); ?></p>
+                <?php else : ?>
+                    <p><?php esc_html_e('Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to a post to display recommendations.', 'kreativ-smart-related-posts'); ?></p>
+                <?php endif; ?>
+                <p><a href="https://wordpress.org/support/plugin/kreativ-smart-related-posts/" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Get help or share feedback', 'kreativ-smart-related-posts'); ?></a></p>
+            </div>
+            <div class="kreasmre-preview-panel">
+                <h2><?php esc_html_e('Preview related posts', 'kreativ-smart-related-posts'); ?></h2>
+                <p><?php esc_html_e('Choose a published post to preview recommendations using your saved settings. This preview uses category and tag matching, manual selections, and fallback settings; it does not run AI or schedule background work.', 'kreativ-smart-related-posts'); ?></p>
+                <?php if (empty($recent_posts)) : ?>
+                    <p><?php esc_html_e('Publish a post first to use the preview. Related recommendations need other published posts.', 'kreativ-smart-related-posts'); ?></p>
+                <?php else : ?>
+                    <form method="get" action="<?php echo esc_url(admin_url('options-general.php')); ?>">
+                        <input type="hidden" name="page" value="kreativ-smart-related-posts" />
+                        <?php wp_nonce_field('kreasmre_preview', 'kreasmre_preview_nonce'); ?>
+                        <label for="kreasmre-preview-post"><?php esc_html_e('Published post', 'kreativ-smart-related-posts'); ?></label>
+                        <select id="kreasmre-preview-post" name="kreasmre_preview_post">
+                            <?php foreach ($recent_posts as $recent_post) : ?>
+                                <option value="<?php echo esc_attr($recent_post->ID); ?>" <?php selected($preview_id, $recent_post->ID); ?>><?php echo esc_html(get_the_title($recent_post)); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="button"><?php esc_html_e('Preview', 'kreativ-smart-related-posts'); ?></button>
+                    </form>
+                    <p class="description"><?php esc_html_e('Showing up to 25 of the most recent published posts. Save changes below before previewing new settings.', 'kreativ-smart-related-posts'); ?></p>
+                <?php endif; ?>
+                <?php if ($preview_requested && !$valid_preview) : ?>
+                    <p class="notice notice-warning inline"><?php esc_html_e('That post is not available for preview. Choose a published post from the list.', 'kreativ-smart-related-posts'); ?></p>
+                <?php elseif ($valid_preview) : ?>
+                    <?php $preview = $this->preview_related_posts($preview_id, $opt); ?>
+                    <?php if (empty($preview)) : ?>
+                        <p class="notice notice-info inline"><?php esc_html_e('No related posts found for this post. Check that other published posts share a category or tag, review manual exclusions, or choose a fallback mode below.', 'kreativ-smart-related-posts'); ?></p>
+                    <?php else : ?>
+                        <div class="kreasmre-preview-result">
+                            <?php
+                            echo $this->render_related($preview_id, [ // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markup is escaped by render_related().
+                                'layout' => $opt['layout'], 'limit' => $opt['posts_per'], 'excerpt' => $opt['show_excerpt'],
+                                'thumbnail' => $opt['show_thumbnail'], 'target' => $opt['link_target'],
+                                'date' => $opt['show_date'], 'category' => $opt['show_category'], 'heading' => $opt['heading_tag'],
+                            ], $preview);
+                            ?>
+                        </div>
+                    <?php endif; ?>
+                    <p class="description"><?php esc_html_e('This preview does not check theme placement or cached AI ordering. Open the post on your site to verify the live result.', 'kreativ-smart-related-posts'); ?> <a href="<?php echo esc_url(get_permalink($preview_id)); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('View post', 'kreativ-smart-related-posts'); ?></a></p>
+                <?php endif; ?>
+            </div>
             <form method="post" action="options.php">
                 <?php settings_fields('kreasmre_group'); ?>
                 <?php do_settings_sections('kreativ-smart-related-posts'); ?>
@@ -515,6 +582,12 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function admin_enqueue_assets($hook_suffix) {
+        if ($hook_suffix === 'settings_page_kreativ-smart-related-posts') {
+            wp_enqueue_style('kreasmre-admin', plugins_url('assets/css/kreasmre-admin.css', __FILE__), [], self::VERSION);
+            $this->enqueue_assets();
+            wp_enqueue_style('kreasmre-related-posts');
+            return;
+        }
         if (!in_array($hook_suffix, ['post.php', 'post-new.php'], true)) {
             return;
         }
@@ -683,14 +756,14 @@ class Kreativ_Smart_Related_Posts {
         ]);
     }
 
-    private function render_related($post_id, $args) {
+    private function render_related($post_id, $args, $preview_posts = null) {
         if (!$post_id) {
             return '';
         }
 
         $opt = $this->settings();
         $title = isset($opt['title']) ? $opt['title'] : '';
-        $posts = $this->get_related_posts($post_id, max(1, min(12, intval($args['limit']))));
+        $posts = $preview_posts === null ? $this->get_related_posts($post_id, max(1, min(12, intval($args['limit'])))) : $preview_posts;
         if (empty($posts)) {
             return '';
         }
@@ -847,6 +920,14 @@ class Kreativ_Smart_Related_Posts {
             $candidates = $this->get_fallback_candidates($post_id, $candidate_limit, $manual['exclude'], $opt['fallback_mode']);
         }
         return $candidates;
+    }
+
+    private function preview_related_posts($post_id, $opt) {
+        $limit = max(1, min(12, intval($opt['posts_per'])));
+        $manual = $this->get_manual_related_overrides($post_id);
+        $candidates = $this->related_candidates($post_id, $limit, $manual, $opt);
+        $ordered = $this->merge_manual_related_overrides($post_id, $manual['include'], $manual['exclude'], $candidates);
+        return array_slice($this->published_related_ids($ordered), 0, $limit);
     }
 
     private function schedule_ai_ranking($post_id, $limit, $cache_key, $opt) {

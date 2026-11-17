@@ -4,30 +4,28 @@ Tags: related posts, internal links, ai, seo
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.3
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Display related posts based on shared categories/tags, with optional AI re-ranking.
+Help readers discover more with related posts based on shared categories and tags.
 
 == Description ==
 
-Kreativ Smart Related Posts helps you keep visitors engaged by showing relevant articles below your content.
+Help readers find their next interesting article. Kreativ Smart Related Posts recommends published posts that share categories and tags with the current post, with controls to fine-tune the result.
 
 It works out of the box with taxonomy-based related posts and can optionally use the WordPress AI Client to re-rank candidates for stronger semantic relevance.
 
-Features:
-- Automatic related posts on single posts
-- Shortcode support: `[kreasmre_related_posts]`
-- Dynamic block for the block editor
-- Multiple layouts: Grid, List, Minimal
-- Style controls for accent color, thumbnails, image ratio, grid columns, and card radius
-- Optional excerpt display
-- Optional post date and category display
-- Configurable fallback posts when no taxonomy match exists
-- Manual include/exclude picker per post
-- Optional AI re-ranking via the WordPress AI Client (disabled by default)
-- Built-in caching for performance
+= Make recommendations your own =
+
+* Display recommendations automatically after single posts, or place them with a block or shortcode.
+* Choose a grid, list, or minimal layout and customize thumbnails, accent color, columns, and card radius.
+* Pin or exclude specific posts using the post editor's manual controls.
+* Choose whether to show excerpts, dates, categories, or fallback posts.
+* Cache results and optionally enable background AI re-ranking through the WordPress AI Client.
+* Preview recommendations for a published post and get help when no matches are found.
+
+AI is optional and disabled by default. Category and tag matching works without an AI provider or API key.
 
 Backwards compatibility:
 - Existing installations retain the legacy shortcodes `[smart_related_posts]` and `[kreativ_related_articles]` when those names are not already registered by another plugin.
@@ -39,16 +37,19 @@ All plugin source files, including the block editor JavaScript and CSS, are incl
 
 == Installation ==
 
-1. Upload the plugin folder to `/wp-content/plugins/`.
-2. Activate **Kreativ Smart Related Posts** through the Plugins screen.
-3. Go to `Settings > Kreativ Smart Related Posts` and configure options.
+1. In your WordPress dashboard, go to **Plugins > Add New Plugin** and search for **Kreativ Smart Related Posts**.
+2. Install and activate the plugin. Alternatively, upload its ZIP through **Plugins > Add New Plugin > Upload Plugin**.
+3. Open **Settings > Kreativ Smart Related Posts** to choose a layout, number of posts, and display options.
+4. Automatic insertion is enabled by default for single posts. To place recommendations manually instead, turn it off in the settings and add the **Kreativ Smart Related Posts** block or `[kreasmre_related_posts]` shortcode to a post.
+5. To customize recommendations for an individual post, use its manual include and exclude controls in the post editor.
+6. Use **Preview related posts** on the settings page to check saved settings against a published post. The preview does not run AI or show cached AI rankings.
+
+Optional AI re-ranking requires WordPress 7.0 or later, a configured WordPress AI Client text-generation provider, and caching. Review your provider's privacy policy before enabling it.
 
 == Screenshots ==
 
-1. Plugin settings screen with AI, layout, display, fallback, and cache controls.
-2. Related posts displayed in grid layout below a post.
-3. Block editor preview and inspector controls.
-4. Manual include/exclude picker in the post editor.
+1. Pin or exclude related posts with the editor's per-post controls.
+2. Preview the related-posts block and customize its layout in the block editor. The preview uses example titles.
 
 == Frequently Asked Questions ==
 
@@ -77,6 +78,10 @@ No.
 When you enable AI re-ranking, source post titles and excerpts and candidate IDs, titles and excerpts are sent through the WordPress AI Client to the provider configured for your site. Consult that provider's privacy policy and terms before enabling it. This requires WordPress 7.0 or later, a configured text-generation provider, and caching. Requests run in a scheduled background task for published posts. No external AI request is made by default.
 
 == Changelog ==
+
+= 1.3.0 =
+* Added getting-started guidance, a published-post preview, and troubleshooting for empty recommendations.
+* Added a direct link to support and feedback.
 
 = 1.2.3 =
 * Removed the direct OpenAI integration. AI re-ranking now uses the WordPress AI Client only.

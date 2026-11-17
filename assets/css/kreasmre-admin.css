@@ -1,3 +1,29 @@
+.kreasmre-getting-started,
+.kreasmre-preview-panel {
+    max-width:960px;
+    margin:20px 0;
+    padding:16px 20px;
+    border:1px solid #c3c4c7;
+    border-left:4px solid #00a5bd;
+    background:#fff
+}
+.kreasmre-getting-started h2,
+.kreasmre-preview-panel h2 {
+    margin-top:0
+}
+.kreasmre-preview-panel select {
+    max-width:min(100%, 480px)
+}
+.kreasmre-preview-result {
+    margin:16px 0;
+    padding:16px;
+    border:1px solid #dcdcde;
+    background:#f6f7f7
+}
+.kreasmre-preview-panel .notice {
+    margin:16px 0;
+    padding:10px 12px
+}
 .srp-post-picker {
     margin-bottom:14px
 }
