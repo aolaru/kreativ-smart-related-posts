@@ -4,7 +4,7 @@ Tags: related posts, internal links, ai, seo
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -83,11 +83,9 @@ When you enable AI re-ranking, source post titles and excerpts and candidate IDs
 
 == Changelog ==
 
-= 1.4.0 =
+= 1.3.0 =
 * Added opt-in support for pages and public custom post types, with separate display and recommendation settings.
 * Extended matching to shared public taxonomies and updated the preview, editorial overrides, cache invalidation, and optional AI ranking.
-
-= 1.3.0 =
 * Added getting-started guidance, a published-post preview, and troubleshooting for empty recommendations.
 * Added a direct link to support and feedback.
 

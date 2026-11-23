@@ -3,7 +3,7 @@
  * Plugin Name: Kreativ Smart Related Posts
  * Plugin URI: https://kreativwp.com/plugins/kreativ-smart-related-posts/
  * Description: Display related content using shared taxonomy terms, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
- * Version: 1.4.0
+ * Version: 1.3.0
  * Author: Andrei Olaru
  * Author URI: https://kreativwp.com/
  * License: GPL-2.0+
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'kreasmre_settings';
-    const VERSION = '1.4.0';
+    const VERSION = '1.3.0';
     const CACHE_GENERATION = 'kreasmre_cache_generation';
     const AI_HOOK = 'kreasmre_refresh_ai_ranking';
     const META_INCLUDE = '_kreasmre_manual_include_ids';
