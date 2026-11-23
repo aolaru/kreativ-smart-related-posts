@@ -4,28 +4,29 @@ Tags: related posts, internal links, ai, seo
 Requires at least: 5.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Help readers discover more with related posts based on shared categories and tags.
+Help readers discover related content based on shared taxonomy terms.
 
 == Description ==
 
-Help readers find their next interesting article. Kreativ Smart Related Posts recommends published posts that share categories and tags with the current post, with controls to fine-tune the result.
+Help readers discover more. Kreativ Smart Related Posts recommends published content that shares public taxonomy terms with the current item, with controls to fine-tune the result.
 
 It works out of the box with taxonomy-based related posts and can optionally use the WordPress AI Client to re-rank candidates for stronger semantic relevance.
 
 = Make recommendations your own =
 
-* Display recommendations automatically after single posts, or place them with a block or shortcode.
+* Display recommendations automatically after selected content types, or place them with a block or shortcode.
 * Choose a grid, list, or minimal layout and customize thumbnails, accent color, columns, and card radius.
-* Pin or exclude specific posts using the post editor's manual controls.
+* Pin or exclude specific content using the editor's manual controls.
 * Choose whether to show excerpts, dates, categories, or fallback posts.
 * Cache results and optionally enable background AI re-ranking through the WordPress AI Client.
-* Preview recommendations for a published post and get help when no matches are found.
+* Preview recommendations for published content and get help when no matches are found.
+* Opt in to displaying and recommending pages and public custom post types, including matches through shared public taxonomies.
 
-AI is optional and disabled by default. Category and tag matching works without an AI provider or API key.
+AI is optional and disabled by default. Taxonomy matching works without an AI provider or API key.
 
 Backwards compatibility:
 - Existing installations retain the legacy shortcodes `[smart_related_posts]` and `[kreativ_related_articles]` when those names are not already registered by another plugin.
@@ -43,6 +44,9 @@ All plugin source files, including the block editor JavaScript and CSS, are incl
 4. Automatic insertion is enabled by default for single posts. To place recommendations manually instead, turn it off in the settings and add the **Kreativ Smart Related Posts** block or `[kreasmre_related_posts]` shortcode to a post.
 5. To customize recommendations for an individual post, use its manual include and exclude controls in the post editor.
 6. Use **Preview related posts** on the settings page to check saved settings against a published post. The preview does not run AI or show cached AI rankings.
+7. To include pages or custom post types, select them separately under **Display on content types** and **Recommend content types**. Existing sites remain post-only by default.
+
+Pages have no categories or tags by default. For automatic matches, register a shared public taxonomy for both source and recommended types. Alternatively, pin items manually or select a fallback mode.
 
 Optional AI re-ranking requires WordPress 7.0 or later, a configured WordPress AI Client text-generation provider, and caching. Review your provider's privacy policy before enabling it.
 
@@ -62,12 +66,12 @@ Only when AI re-ranking is enabled and a provider is configured, the plugin send
 - Candidate post IDs, titles, and excerpts
 
 = Does the plugin cache results? =
-Yes. Related post results are cached with WordPress transients to reduce repeated database lookups and API calls. Cache duration is configurable, and caches are cleared when posts or category/tag assignments change.
+Yes. Related results are cached with WordPress transients to reduce repeated database lookups and API calls. Cache duration is configurable, and caches are cleared when relevant content or taxonomy assignments change.
 
 = Does AI ranking slow down page loads? =
 Visitors receive taxonomy-based recommendations immediately. When enabled, AI ranking refreshes in the background through WP-Cron, and later visits use the cached AI results. Caching must be enabled for background AI ranking; with caching disabled, only taxonomy-based results are used. Sites with WP-Cron disabled need a server cron job to process scheduled WordPress events.
 
-= What happens when a post has no related category or tag matches? =
+= What happens when content has no shared taxonomy matches? =
 You can choose to show nothing, latest posts, or posts from the same author.
 
 = Does the plugin create custom database tables? =
@@ -78,6 +82,10 @@ No.
 When you enable AI re-ranking, source post titles and excerpts and candidate IDs, titles and excerpts are sent through the WordPress AI Client to the provider configured for your site. Consult that provider's privacy policy and terms before enabling it. This requires WordPress 7.0 or later, a configured text-generation provider, and caching. Requests run in a scheduled background task for published posts. No external AI request is made by default.
 
 == Changelog ==
+
+= 1.4.0 =
+* Added opt-in support for pages and public custom post types, with separate display and recommendation settings.
+* Extended matching to shared public taxonomies and updated the preview, editorial overrides, cache invalidation, and optional AI ranking.
 
 = 1.3.0 =
 * Added getting-started guidance, a published-post preview, and troubleshooting for empty recommendations.

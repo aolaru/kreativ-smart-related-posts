@@ -7,6 +7,8 @@ function add_action(...$args) {}
 function add_filter(...$args) {}
 function add_shortcode(...$args) {}
 function get_option($name, $default = false) { return $GLOBALS['kreasmre_test_options'][$name] ?? $default; }
+function get_post_types($args, $output) { return ['post' => (object) []]; }
+function is_post_type_viewable($type) { return true; }
 function __($text, $domain = null) { return $text; }
 function wp_parse_args($args, $defaults) { return array_merge($defaults, $args); }
 function get_post($id) { return (object) ['ID' => $id]; }

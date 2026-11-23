@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Kreativ Smart Related Posts 1.3.0\n"
+"Project-Id-Version: Kreativ Smart Related Posts 1.4.0\n"
 "Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/kreativ-smart-related-posts/\n"
 "POT-Creation-Date: 2026-10-25 00:00+0000\n"
 "MIME-Version: 1.0\n"
@@ -23,13 +23,22 @@ msgstr ""
 msgid "Getting started"
 msgstr ""
 
-msgid "Related posts are selected from published posts that share categories or tags. AI is optional."
+msgid "Display on content types"
 msgstr ""
 
-msgid "Automatic insertion is on for single posts. A post with no matching recommendations may show nothing."
+msgid "Recommend content types"
 msgstr ""
 
-msgid "Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to a post to display recommendations."
+msgid "Only public content types can be selected. Existing sites use posts only until changed."
+msgstr ""
+
+msgid "Recommendations come from published content sharing a public taxonomy. AI is optional."
+msgstr ""
+
+msgid "Automatic insertion is on for selected content types. Content with no matching recommendations may show nothing."
+msgstr ""
+
+msgid "Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to selected content to display recommendations."
 msgstr ""
 
 msgid "Get help or share feedback"
@@ -38,10 +47,10 @@ msgstr ""
 msgid "Preview related posts"
 msgstr ""
 
-msgid "Choose a published post to preview recommendations using your saved settings. This preview uses category and tag matching, manual selections, and fallback settings; it does not run AI or schedule background work."
+msgid "Choose published content to preview recommendations using your saved settings. The preview uses shared public taxonomies, manual selections, and fallback settings; it does not run AI or schedule background work."
 msgstr ""
 
-msgid "Publish a post first to use the preview. Related recommendations need other published posts."
+msgid "Select a content type and publish content to use the preview. Recommendations need other published items."
 msgstr ""
 
 msgid "Published post"
@@ -56,7 +65,7 @@ msgstr ""
 msgid "That post is not available for preview. Choose a published post from the list."
 msgstr ""
 
-msgid "No related posts found for this post. Check that other published posts share a category or tag, review manual exclusions, or choose a fallback mode below."
+msgid "No related content found. Check that selected content types share a public taxonomy and published items, review manual exclusions, or choose a fallback mode below."
 msgstr ""
 
 msgid "This preview does not check theme placement or cached AI ordering. Open the post on your site to verify the live result."
@@ -104,7 +113,7 @@ msgstr ""
 msgid "Auto-insert after content"
 msgstr ""
 
-msgid "Automatically append to single posts."
+msgid "Automatically append to selected content types."
 msgstr ""
 
 msgid "Section title"
@@ -149,7 +158,7 @@ msgstr ""
 msgid "Same author"
 msgstr ""
 
-msgid "Used only when no category or tag matches are found."
+msgid "Used only when no shared taxonomy matches are found."
 msgstr ""
 
 msgid "Link target"

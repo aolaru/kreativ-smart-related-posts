@@ -23,7 +23,12 @@ function sanitize_text_field($value) { return $value; }
 function absint($value) { return abs((int) $value); }
 function wp_nonce_field($action, $name) { echo '<input name="' . esc_attr($name) . '" value="valid">'; }
 function selected($value, $expected) { if ($value == $expected) { echo 'selected'; } }
-function get_post_type($id) { return 'post'; }
+function get_post_type($id) { return $GLOBALS['types'][$id] ?? 'post'; }
+function get_post_types($args, $output) { return $GLOBALS['post_types']; }
+function is_post_type_viewable($type) { return true; }
+function get_object_taxonomies($type, $output) {
+    return $GLOBALS['taxonomies'][$type] ?? [];
+}
 function get_post_status($id) { return isset($GLOBALS['published'][$id]) ? 'publish' : 'draft'; }
 function get_the_title($post) { return 'Post ' . (is_object($post) ? $post->ID : $post); }
 function get_permalink($id) { return '/post/' . $id; }
@@ -42,8 +47,9 @@ function get_posts($args) {
     }
     $ids = $args['post__in'] ?? $GLOBALS['fallback'];
     $exclude = $args['post__not_in'] ?? [];
-    return array_values(array_filter($ids, static function ($id) use ($exclude) {
-        return isset($GLOBALS['published'][$id]) && !in_array($id, $exclude, true);
+    $types = (array) ($args['post_type'] ?? 'post');
+    return array_values(array_filter($ids, static function ($id) use ($exclude, $types) {
+        return isset($GLOBALS['published'][$id]) && in_array(get_post_type($id), $types, true) && !in_array($id, $exclude, true);
     }));
 }
 class WP_Query {
@@ -51,11 +57,21 @@ class WP_Query {
     public function __construct($args) {
         $source = $args['kreasmre_source_id'];
         $this->posts = array_values(array_filter($GLOBALS['matches'][$source] ?? [], static function ($id) use ($args) {
-            return isset($GLOBALS['published'][$id]) && !in_array($id, $args['post__not_in'], true);
+            return isset($GLOBALS['published'][$id]) && in_array(get_post_type($id), $args['post_type'], true) && !in_array($id, $args['post__not_in'], true);
         }));
     }
 }
-$GLOBALS['wpdb'] = (object) ['term_relationships' => 'term_relationships', 'term_taxonomy' => 'term_taxonomy', 'posts' => 'posts'];
+class Kreasmre_Test_Wpdb {
+    public $term_relationships = 'term_relationships';
+    public $term_taxonomy = 'term_taxonomy';
+    public $posts = 'posts';
+    public function prepare($query, $value) { return str_replace('%s', "'" . $value . "'", $query); }
+}
+$GLOBALS['wpdb'] = new Kreasmre_Test_Wpdb();
+$GLOBALS['post_types'] = ['post' => (object) [], 'page' => (object) [], 'book' => (object) []];
+$GLOBALS['types'] = [];
+$category = (object) ['name' => 'category', 'public' => true, 'hierarchical' => true, 'object_type' => ['post', 'book']];
+$GLOBALS['taxonomies'] = ['post' => [$category], 'book' => [$category], 'page' => []];
 $GLOBALS['terms'] = [1 => ['category' => [2], 'post_tag' => []], 5 => ['category' => [], 'post_tag' => []]];
 $GLOBALS['matches'] = [1 => [2, 3, 4]];
 $GLOBALS['published'] = [1 => true, 2 => true, 3 => true, 5 => true];
@@ -97,7 +113,7 @@ if (strpos($html, 'Preview related posts') === false || strpos($html, 'srp-minim
 $_GET = ['kreasmre_preview_post' => '5', 'kreasmre_preview_nonce' => 'valid'];
 ob_start();
 $plugin->settings_page();
-if (strpos(ob_get_clean(), 'No related posts found') === false) {
+if (strpos(ob_get_clean(), 'No related content found') === false) {
     throw new RuntimeException('Settings page must explain empty preview results.');
 }
 $_GET = ['kreasmre_preview_post' => '1', 'kreasmre_preview_nonce' => 'invalid'];
@@ -110,7 +126,7 @@ $GLOBALS['recent'] = [];
 $_GET = [];
 ob_start();
 $plugin->settings_page();
-if (strpos(ob_get_clean(), 'Publish a post first') === false) {
+if (strpos(ob_get_clean(), 'Select a content type') === false) {
     throw new RuntimeException('Settings page must guide sites without published posts.');
 }
 $GLOBALS['can_manage'] = false;
@@ -118,5 +134,31 @@ ob_start();
 $plugin->settings_page();
 if (ob_get_clean() !== '') {
     throw new RuntimeException('Settings page must require management capability.');
+}
+$GLOBALS['can_manage'] = true;
+$GLOBALS['types'][6] = 'page';
+$GLOBALS['types'][7] = 'book';
+$GLOBALS['published'][6] = true;
+$GLOBALS['published'][7] = true;
+$GLOBALS['matches'][1] = [2, 7];
+$GLOBALS['options'][Kreativ_Smart_Related_Posts::OPTION] = [
+    'source_types' => ['post', 'page'], 'target_types' => ['book'], 'posts_per' => 6, 'fallback_mode' => 'none',
+];
+$cross_settings = $plugin->settings();
+$GLOBALS['meta'] = [];
+if ($preview->invoke($plugin, 1, $cross_settings) !== [7]) {
+    throw new RuntimeException('Preview must recommend only selected public target types.');
+}
+if ($preview->invoke($plugin, 6, $cross_settings) !== []) {
+    throw new RuntimeException('A page without shared terms must not produce taxonomy matches.');
+}
+$cross_settings['fallback_mode'] = 'latest';
+$GLOBALS['fallback'] = [7, 2];
+if ($preview->invoke($plugin, 6, $cross_settings) !== [7]) {
+    throw new RuntimeException('Pages must use the selected target types for fallback recommendations.');
+}
+$cross_settings['target_types'] = [];
+if ($preview->invoke($plugin, 6, $cross_settings) !== []) {
+    throw new RuntimeException('An empty target selection must not implicitly enable posts.');
 }
 echo "Preview checks passed without scheduling AI or writing cache.\n";

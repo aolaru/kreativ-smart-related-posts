@@ -1,9 +1,11 @@
 <?php
 /**
  * Plugin Name: Kreativ Smart Related Posts
- * Description: Display related posts using shared categories/tags, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
- * Version: 1.3.0
+ * Plugin URI: https://kreativwp.com/plugins/kreativ-smart-related-posts/
+ * Description: Display related content using shared taxonomy terms, with optional AI re-ranking. Includes auto-insert, shortcode, and a dynamic block.
+ * Version: 1.4.0
  * Author: Andrei Olaru
+ * Author URI: https://kreativwp.com/
  * License: GPL-2.0+
  * Text Domain: kreativ-smart-related-posts
  * Requires at least: 5.8
@@ -16,7 +18,7 @@ if (!defined('ABSPATH')) {
 
 class Kreativ_Smart_Related_Posts {
     const OPTION = 'kreasmre_settings';
-    const VERSION = '1.3.0';
+    const VERSION = '1.4.0';
     const CACHE_GENERATION = 'kreasmre_cache_generation';
     const AI_HOOK = 'kreasmre_refresh_ai_ranking';
     const META_INCLUDE = '_kreasmre_manual_include_ids';
@@ -35,8 +37,8 @@ class Kreativ_Smart_Related_Posts {
         add_action('wp_ajax_kreasmre_search_posts', [$this, 'ajax_search_posts']);
 
         add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
-        add_action('save_post_post', [$this, 'flush_related_cache_on_save'], 10, 3);
-        add_action('save_post_post', [$this, 'save_related_overrides_meta'], 20, 3);
+        add_action('save_post', [$this, 'flush_related_cache_on_save'], 10, 3);
+        add_action('save_post', [$this, 'save_related_overrides_meta'], 20, 3);
         add_action('deleted_post', [$this, 'flush_related_cache_on_delete'], 10, 2);
         add_action('set_object_terms', [$this, 'flush_related_cache_on_terms'], 10, 6);
         add_filter('the_content', [$this, 'auto_append_related']);
@@ -60,6 +62,8 @@ class Kreativ_Smart_Related_Posts {
         $this->flush_related_cache();
         $defaults = [
             'enable_ai'      => 0,
+            'source_types'   => ['post'],
+            'target_types'   => ['post'],
             'layout'         => 'grid',
             'posts_per'      => 6,
             'show_excerpt'   => 0,
@@ -101,6 +105,8 @@ class Kreativ_Smart_Related_Posts {
     public function settings() {
         $defaults = [
             'enable_ai'      => 0,
+            'source_types'   => ['post'],
+            'target_types'   => ['post'],
             'ai_provider'    => 'wordpress',
             'layout'         => 'grid',
             'posts_per'      => 6,
@@ -133,6 +139,21 @@ class Kreativ_Smart_Related_Posts {
         return wp_parse_args($opt, $defaults);
     }
 
+    private function public_post_types() {
+        $types = get_post_types(['public' => true], 'objects');
+        unset($types['attachment']);
+        return array_filter($types, 'is_post_type_viewable');
+    }
+
+    private function enabled_types($opt, $key) {
+        $values = isset($opt[$key]) && is_array($opt[$key]) ? $opt[$key] : ['post'];
+        return array_values(array_intersect(array_keys($this->public_post_types()), array_filter($values, 'is_string')));
+    }
+
+    private function source_enabled($id, $opt) {
+        return in_array(get_post_type($id), $this->enabled_types($opt, 'source_types'), true);
+    }
+
     public function admin_menu() {
         add_options_page(
             __('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'),
@@ -152,6 +173,18 @@ class Kreativ_Smart_Related_Posts {
             '__return_false',
             'kreativ-smart-related-posts'
         );
+
+        foreach (['source_types' => __('Display on content types', 'kreativ-smart-related-posts'), 'target_types' => __('Recommend content types', 'kreativ-smart-related-posts')] as $key => $label) {
+            add_settings_field('kreasmre_' . $key, $label, function () use ($key) {
+                $opt = $this->settings();
+                $selected_types = $this->enabled_types($opt, $key);
+                echo '<input type="hidden" name="' . esc_attr(self::OPTION) . '[' . esc_attr($key) . '][]" value="" />';
+                foreach ($this->public_post_types() as $type => $object) {
+                    echo '<label style="display:block"><input type="checkbox" name="' . esc_attr(self::OPTION) . '[' . esc_attr($key) . '][]" value="' . esc_attr($type) . '" ' . checked(in_array($type, $selected_types, true), true, false) . ' /> ' . esc_html($object->labels->name) . '</label>';
+                }
+                echo '<p class="description">' . esc_html__('Only public content types can be selected. Existing sites use posts only until changed.', 'kreativ-smart-related-posts') . '</p>';
+            }, 'kreativ-smart-related-posts', 'kreasmre_main');
+        }
 
         add_settings_field('kreasmre_enable_ai', __('Enable AI re-ranking', 'kreativ-smart-related-posts'), function () {
             $opt = $this->settings();
@@ -185,7 +218,7 @@ class Kreativ_Smart_Related_Posts {
 
         add_settings_field('kreasmre_auto_insert', __('Auto-insert after content', 'kreativ-smart-related-posts'), function () {
             $opt = $this->settings();
-            echo '<label><input type="checkbox" name="' . esc_attr(self::OPTION) . '[auto_insert]" value="1" ' . checked(1, intval($opt['auto_insert']), false) . '/> ' . esc_html__('Automatically append to single posts.', 'kreativ-smart-related-posts') . '</label>';
+            echo '<label><input type="checkbox" name="' . esc_attr(self::OPTION) . '[auto_insert]" value="1" ' . checked(1, intval($opt['auto_insert']), false) . '/> ' . esc_html__('Automatically append to selected content types.', 'kreativ-smart-related-posts') . '</label>';
         }, 'kreativ-smart-related-posts', 'kreasmre_main');
 
         add_settings_field('kreasmre_title', __('Section title', 'kreativ-smart-related-posts'), function () {
@@ -242,7 +275,7 @@ class Kreativ_Smart_Related_Posts {
                 echo '<option value="' . esc_attr($k) . '" ' . selected($opt['fallback_mode'], $k, false) . '>' . esc_html($label) . '</option>';
             }
             echo '</select>';
-            echo '<p class="description">' . esc_html__('Used only when no category or tag matches are found.', 'kreativ-smart-related-posts') . '</p>';
+            echo '<p class="description">' . esc_html__('Used only when no shared taxonomy matches are found.', 'kreativ-smart-related-posts') . '</p>';
         }, 'kreativ-smart-related-posts', 'kreasmre_display');
 
         add_settings_field('kreasmre_link_target', __('Link target', 'kreativ-smart-related-posts'), function () {
@@ -313,6 +346,8 @@ class Kreativ_Smart_Related_Posts {
 
         return [
             'enable_ai'      => empty($input['enable_ai']) ? 0 : 1,
+            'source_types'   => $this->enabled_types($input, 'source_types'),
+            'target_types'   => $this->enabled_types($input, 'target_types'),
             'ai_provider'    => 'wordpress',
             'layout'         => $layout,
             'posts_per'      => isset($input['posts_per']) ? max(1, min(12, intval($input['posts_per']))) : 6,
@@ -338,8 +373,9 @@ class Kreativ_Smart_Related_Posts {
             return;
         }
         $opt = $this->settings();
-        $recent_posts = get_posts([
-            'post_type' => 'post',
+        $source_types = $this->enabled_types($opt, 'source_types');
+        $recent_posts = empty($source_types) ? [] : get_posts([
+            'post_type' => $source_types,
             'post_status' => 'publish',
             'posts_per_page' => 25,
             'orderby' => 'date',
@@ -354,25 +390,25 @@ class Kreativ_Smart_Related_Posts {
             ? absint(wp_unslash($_GET['kreasmre_preview_post'])) : 0;
         $recent_ids = array_map(static function ($post) { return intval($post->ID); }, $recent_posts);
         $valid_preview = $preview_id && in_array($preview_id, $recent_ids, true)
-            && get_post_type($preview_id) === 'post' && get_post_status($preview_id) === 'publish';
+            && $this->source_enabled($preview_id, $opt) && get_post_status($preview_id) === 'publish';
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'); ?></h1>
             <div class="kreasmre-getting-started">
                 <h2><?php esc_html_e('Getting started', 'kreativ-smart-related-posts'); ?></h2>
-                <p><?php esc_html_e('Related posts are selected from published posts that share categories or tags. AI is optional.', 'kreativ-smart-related-posts'); ?></p>
+                <p><?php esc_html_e('Recommendations come from published content sharing a public taxonomy. AI is optional.', 'kreativ-smart-related-posts'); ?></p>
                 <?php if (!empty($opt['auto_insert'])) : ?>
-                    <p><?php esc_html_e('Automatic insertion is on for single posts. A post with no matching recommendations may show nothing.', 'kreativ-smart-related-posts'); ?></p>
+                    <p><?php esc_html_e('Automatic insertion is on for selected content types. Content with no matching recommendations may show nothing.', 'kreativ-smart-related-posts'); ?></p>
                 <?php else : ?>
-                    <p><?php esc_html_e('Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to a post to display recommendations.', 'kreativ-smart-related-posts'); ?></p>
+                    <p><?php esc_html_e('Automatic insertion is off. Add the Kreativ Smart Related Posts block or shortcode to selected content to display recommendations.', 'kreativ-smart-related-posts'); ?></p>
                 <?php endif; ?>
                 <p><a href="https://wordpress.org/support/plugin/kreativ-smart-related-posts/" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Get help or share feedback', 'kreativ-smart-related-posts'); ?></a></p>
             </div>
             <div class="kreasmre-preview-panel">
                 <h2><?php esc_html_e('Preview related posts', 'kreativ-smart-related-posts'); ?></h2>
-                <p><?php esc_html_e('Choose a published post to preview recommendations using your saved settings. This preview uses category and tag matching, manual selections, and fallback settings; it does not run AI or schedule background work.', 'kreativ-smart-related-posts'); ?></p>
+                <p><?php esc_html_e('Choose published content to preview recommendations using your saved settings. The preview uses shared public taxonomies, manual selections, and fallback settings; it does not run AI or schedule background work.', 'kreativ-smart-related-posts'); ?></p>
                 <?php if (empty($recent_posts)) : ?>
-                    <p><?php esc_html_e('Publish a post first to use the preview. Related recommendations need other published posts.', 'kreativ-smart-related-posts'); ?></p>
+                    <p><?php esc_html_e('Select a content type and publish content to use the preview. Recommendations need other published items.', 'kreativ-smart-related-posts'); ?></p>
                 <?php else : ?>
                     <form method="get" action="<?php echo esc_url(admin_url('options-general.php')); ?>">
                         <input type="hidden" name="page" value="kreativ-smart-related-posts" />
@@ -392,7 +428,7 @@ class Kreativ_Smart_Related_Posts {
                 <?php elseif ($valid_preview) : ?>
                     <?php $preview = $this->preview_related_posts($preview_id, $opt); ?>
                     <?php if (empty($preview)) : ?>
-                        <p class="notice notice-info inline"><?php esc_html_e('No related posts found for this post. Check that other published posts share a category or tag, review manual exclusions, or choose a fallback mode below.', 'kreativ-smart-related-posts'); ?></p>
+                        <p class="notice notice-info inline"><?php esc_html_e('No related content found. Check that selected content types share a public taxonomy and published items, review manual exclusions, or choose a fallback mode below.', 'kreativ-smart-related-posts'); ?></p>
                     <?php else : ?>
                         <div class="kreasmre-preview-result">
                             <?php
@@ -422,14 +458,16 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function register_related_overrides_metabox() {
-        add_meta_box(
+        foreach ($this->enabled_types($this->settings(), 'source_types') as $type) {
+            add_meta_box(
             'kreasmre_related_overrides',
             __('Smart Related Overrides', 'kreativ-smart-related-posts'),
             [$this, 'render_related_overrides_metabox'],
-            'post',
+            $type,
             'side',
             'default'
-        );
+            );
+        }
     }
 
     public function render_related_overrides_metabox($post) {
@@ -467,7 +505,15 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function ajax_search_posts() {
-        if (!current_user_can('edit_posts')) {
+        $can_edit = false;
+        foreach ($this->enabled_types($this->settings(), 'source_types') as $type) {
+            $object = get_post_type_object($type);
+            if ($object && current_user_can($object->cap->edit_posts)) {
+                $can_edit = true;
+                break;
+            }
+        }
+        if (!$can_edit) {
             wp_send_json_error(['message' => __('Permission denied.', 'kreativ-smart-related-posts')], 403);
         }
 
@@ -478,8 +524,12 @@ class Kreativ_Smart_Related_Posts {
             wp_send_json_success([]);
         }
 
+        $target_types = $this->enabled_types($this->settings(), 'target_types');
+        if (empty($target_types)) {
+            wp_send_json_success([]);
+        }
         $posts = get_posts([
-            'post_type'           => 'post',
+            'post_type'           => $target_types,
             'post_status'         => 'publish',
             's'                   => $term,
             'posts_per_page'      => 10,
@@ -499,8 +549,12 @@ class Kreativ_Smart_Related_Posts {
             return [];
         }
 
+        $target_types = $this->enabled_types($this->settings(), 'target_types');
+        if (empty($target_types)) {
+            return [];
+        }
         $posts = get_posts([
-            'post_type'           => 'post',
+            'post_type'           => $target_types,
             'post_status'         => $this->post_picker_statuses(),
             'post__in'            => $ids,
             'orderby'             => 'post__in',
@@ -529,18 +583,14 @@ class Kreativ_Smart_Related_Posts {
     }
 
     private function post_picker_statuses() {
-        $statuses = ['publish', 'future', 'draft', 'pending'];
-        if (current_user_can('read_private_posts')) {
-            $statuses[] = 'private';
-        }
-
-        return $statuses;
+        // Results for non-public items are checked individually with edit_post.
+        return ['publish', 'future', 'draft', 'pending', 'private'];
     }
 
     public function save_related_overrides_meta($post_id, $post, $update) {
         unset($update);
 
-        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+        if (!$post instanceof WP_Post || !$this->source_enabled($post_id, $this->settings())) {
             return;
         }
 
@@ -593,7 +643,7 @@ class Kreativ_Smart_Related_Posts {
         }
 
         $screen = get_current_screen();
-        if (!$screen || $screen->post_type !== 'post') {
+        if (!$screen || !in_array($screen->post_type, $this->enabled_types($this->settings(), 'source_types'), true)) {
             return;
         }
 
@@ -643,7 +693,7 @@ class Kreativ_Smart_Related_Posts {
             return;
         }
 
-        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+        if (!$post instanceof WP_Post || !in_array($post->post_type, array_unique(array_merge($this->enabled_types($this->settings(), 'source_types'), $this->enabled_types($this->settings(), 'target_types'))), true)) {
             return;
         }
 
@@ -651,7 +701,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function flush_related_cache_on_delete($post_id, $post) {
-        if (!$post instanceof WP_Post || $post->post_type !== 'post') {
+        if (!$post instanceof WP_Post || !in_array($post->post_type, array_unique(array_merge($this->enabled_types($this->settings(), 'source_types'), $this->enabled_types($this->settings(), 'target_types'))), true)) {
             return;
         }
 
@@ -661,11 +711,13 @@ class Kreativ_Smart_Related_Posts {
     public function flush_related_cache_on_terms($object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids) {
         unset($terms, $tt_ids, $append, $old_tt_ids);
 
-        if (get_post_type($object_id) !== 'post') {
+        $type = get_post_type($object_id);
+        if (!in_array($type, array_unique(array_merge($this->enabled_types($this->settings(), 'source_types'), $this->enabled_types($this->settings(), 'target_types'))), true)) {
             return;
         }
 
-        if (!in_array($taxonomy, ['category', 'post_tag'], true)) {
+        $taxonomy_object = get_taxonomy($taxonomy);
+        if (!$taxonomy_object || !$taxonomy_object->public || !is_object_in_taxonomy($type, $taxonomy)) {
             return;
         }
 
@@ -689,7 +741,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function auto_append_related($content) {
-        if (!is_singular('post') || !in_the_loop() || !is_main_query() || get_the_ID() !== get_queried_object_id()) {
+        if (!is_singular() || !in_the_loop() || !is_main_query() || get_the_ID() !== get_queried_object_id() || !$this->source_enabled(get_the_ID(), $this->settings())) {
             return $content;
         }
 
@@ -852,6 +904,9 @@ class Kreativ_Smart_Related_Posts {
     private function get_related_posts($post_id, $limit = 6) {
         $limit = max(1, min(12, intval($limit)));
         $opt = $this->settings();
+        if (!$this->source_enabled($post_id, $opt) || empty($this->enabled_types($opt, 'target_types'))) {
+            return [];
+        }
         $manual = $this->get_manual_related_overrides($post_id);
         $cache_key = $this->related_cache_key($post_id, $limit, $opt, $manual);
         $cache_ttl = max(0, intval($opt['cache_hours'])) * HOUR_IN_SECONDS;
@@ -892,6 +947,8 @@ class Kreativ_Smart_Related_Posts {
             $opt['fallback_mode'],
             !empty($opt['enable_ai']),
             $opt['ai_provider'],
+            $this->enabled_types($opt, 'source_types'),
+            $this->enabled_types($opt, 'target_types'),
             $manual,
         ]));
     }
@@ -902,8 +959,12 @@ class Kreativ_Smart_Related_Posts {
             return [];
         }
 
+        $target_types = $this->enabled_types($this->settings(), 'target_types');
+        if (empty($target_types)) {
+            return [];
+        }
         return array_map('intval', get_posts([
-            'post_type'           => 'post',
+            'post_type'           => $target_types,
             'post_status'         => 'publish',
             'post__in'            => $ids,
             'orderby'             => 'post__in',
@@ -923,6 +984,9 @@ class Kreativ_Smart_Related_Posts {
     }
 
     private function preview_related_posts($post_id, $opt) {
+        if (!$this->source_enabled($post_id, $opt) || empty($this->enabled_types($opt, 'target_types'))) {
+            return [];
+        }
         $limit = max(1, min(12, intval($opt['posts_per'])));
         $manual = $this->get_manual_related_overrides($post_id);
         $candidates = $this->related_candidates($post_id, $limit, $manual, $opt);
@@ -932,7 +996,7 @@ class Kreativ_Smart_Related_Posts {
 
     private function schedule_ai_ranking($post_id, $limit, $cache_key, $opt) {
         if (!$this->ai_available($opt) || intval($opt['cache_hours']) < 1
-            || get_post_status($post_id) !== 'publish' || get_post_type($post_id) !== 'post'
+            || get_post_status($post_id) !== 'publish' || !$this->source_enabled($post_id, $opt)
             || get_transient('kreasmre_ai_retry_' . md5($cache_key))) {
             return;
         }
@@ -973,7 +1037,7 @@ class Kreativ_Smart_Related_Posts {
         $opt = $this->settings();
         $manual = $this->get_manual_related_overrides($post_id);
         if (!$this->ai_available($opt) || intval($opt['cache_hours']) < 1
-            || get_post_status($post_id) !== 'publish' || get_post_type($post_id) !== 'post'
+            || get_post_status($post_id) !== 'publish' || !$this->source_enabled($post_id, $opt)
             || $cache_key !== $this->related_cache_key($post_id, $limit, $opt, $manual)
             || get_transient('kreasmre_ai_retry_' . md5($cache_key))) {
             return;
@@ -1021,42 +1085,41 @@ class Kreativ_Smart_Related_Posts {
     }
 
     private function get_taxonomy_candidates($post_id, $limit, $exclude_ids = []) {
-        $raw_terms_cat = wp_get_post_terms($post_id, 'category', ['fields' => 'ids']);
-        $raw_terms_tag = wp_get_post_terms($post_id, 'post_tag', ['fields' => 'ids']);
-        $terms_cat = is_wp_error($raw_terms_cat) ? [] : array_map('intval', $raw_terms_cat);
-        $terms_tag = is_wp_error($raw_terms_tag) ? [] : array_map('intval', $raw_terms_tag);
-
-        if (empty($terms_cat) && empty($terms_tag)) {
+        $target_types = $this->enabled_types($this->settings(), 'target_types');
+        if (empty($target_types)) {
             return [];
         }
-
         $tax_query = ['relation' => 'OR'];
-
-        if (!empty($terms_cat)) {
-            $tax_query[] = [
-                'taxonomy' => 'category',
-                'field'    => 'term_id',
-                'terms'    => $terms_cat,
-            ];
+        $weighted_conditions = [];
+        $hierarchical_conditions = [];
+        global $wpdb;
+        foreach (get_object_taxonomies(get_post_type($post_id), 'objects') as $taxonomy) {
+            if (!$taxonomy->public || !array_intersect($target_types, $taxonomy->object_type)) {
+                continue;
+            }
+            $terms = wp_get_post_terms($post_id, $taxonomy->name, ['fields' => 'ids']);
+            $terms = is_wp_error($terms) ? [] : array_filter(array_map('intval', $terms));
+            if (empty($terms)) {
+                continue;
+            }
+            $tax_query[] = ['taxonomy' => $taxonomy->name, 'field' => 'term_id', 'terms' => $terms];
+            $condition = $wpdb->prepare('tt.taxonomy = %s', $taxonomy->name) . ' AND tt.term_id IN (' . implode(',', $terms) . ')';
+            $weighted_conditions[] = 'WHEN ' . $condition . ' THEN ' . ($taxonomy->hierarchical ? '4' : '2');
+            if ($taxonomy->hierarchical) {
+                $hierarchical_conditions[] = '(' . $condition . ')';
+            }
         }
-
-        if (!empty($terms_tag)) {
-            $tax_query[] = [
-                'taxonomy' => 'post_tag',
-                'field'    => 'term_id',
-                'terms'    => $terms_tag,
-            ];
+        if (empty($weighted_conditions)) {
+            return [];
         }
 
         $blocked_ids = array_values(array_unique(array_merge([intval($post_id)], array_map('intval', $exclude_ids))));
 
-        global $wpdb;
         // Score every match in SQL before LIMIT, without loading the full archive into PHP.
-        $category_condition = empty($terms_cat) ? '0 = 1' : "tt.taxonomy = 'category' AND tt.term_id IN (" . implode(',', $terms_cat) . ')';
-        $tag_condition = empty($terms_tag) ? '0 = 1' : "tt.taxonomy = 'post_tag' AND tt.term_id IN (" . implode(',', $terms_tag) . ')';
         $from = "FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tr.object_id = {$wpdb->posts}.ID";
-        $score = "(SELECT COALESCE(SUM(CASE WHEN {$category_condition} THEN 4 WHEN {$tag_condition} THEN 2 ELSE 0 END), 0) {$from})";
-        $category_count = "(SELECT COUNT(*) {$from} AND ({$category_condition}))";
+        $score = '(SELECT COALESCE(SUM(CASE ' . implode(' ', $weighted_conditions) . " ELSE 0 END), 0) {$from})";
+        $hierarchical_condition = empty($hierarchical_conditions) ? '0 = 1' : implode(' OR ', $hierarchical_conditions);
+        $category_count = "(SELECT COUNT(*) {$from} AND ({$hierarchical_condition}))";
         $order = static function ($orderby, $query) use ($post_id, $wpdb, $score, $category_count) {
             if ($query->get('kreasmre_source_id') !== intval($post_id)) {
                 return $orderby;
@@ -1067,7 +1130,7 @@ class Kreativ_Smart_Related_Posts {
         add_filter('posts_orderby', $order, 10, 2);
         try {
             $q = new WP_Query([
-                'post_type'           => 'post',
+                'post_type'           => $target_types,
                 'post_status'         => 'publish',
                 'post__not_in'        => $blocked_ids,
                 'posts_per_page'      => intval($limit),
@@ -1086,12 +1149,13 @@ class Kreativ_Smart_Related_Posts {
 
     private function get_fallback_candidates($post_id, $limit, $exclude_ids, $mode) {
         $post = get_post($post_id);
-        if (!$post) {
+        $target_types = $this->enabled_types($this->settings(), 'target_types');
+        if (!$post || empty($target_types)) {
             return [];
         }
 
         $args = [
-            'post_type'           => 'post',
+            'post_type'           => $target_types,
             'post_status'         => 'publish',
             'post__not_in'        => array_values(array_unique(array_merge([intval($post_id)], array_map('intval', $exclude_ids)))),
             'posts_per_page'      => intval($limit),
@@ -1159,8 +1223,12 @@ class Kreativ_Smart_Related_Posts {
             }
 
             if (!empty($candidates)) {
+                $target_types = $this->enabled_types($this->settings(), 'target_types');
+                if (empty($target_types)) {
+                    return [];
+                }
                 $validated_include = get_posts([
-                    'post_type'           => 'post',
+                    'post_type'           => $target_types,
                     'post_status'         => 'publish',
                     'post__in'            => $candidates,
                     'orderby'             => 'post__in',
