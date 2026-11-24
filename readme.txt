@@ -40,7 +40,7 @@ All plugin source files, including the block editor JavaScript and CSS, are incl
 
 1. In your WordPress dashboard, go to **Plugins > Add New Plugin** and search for **Kreativ Smart Related Posts**.
 2. Install and activate the plugin. Alternatively, upload its ZIP through **Plugins > Add New Plugin > Upload Plugin**.
-3. Open **Settings > Kreativ Smart Related Posts** to choose a layout, number of posts, and display options.
+3. Open **Smart Related Posts** in the dashboard sidebar to choose a layout, number of posts, and display options.
 4. Automatic insertion is enabled by default for single posts. To place recommendations manually instead, turn it off in the settings and add the **Kreativ Smart Related Posts** block or `[kreasmre_related_posts]` shortcode to a post.
 5. To customize recommendations for an individual post, use its manual include and exclude controls in the post editor.
 6. Use **Preview related posts** on the settings page to check saved settings against a published post. The preview does not run AI or show cached AI rankings.

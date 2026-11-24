@@ -250,3 +250,12 @@ msgstr ""
 
 msgid "Short preview excerpt for this related article."
 msgstr ""
+
+msgid "Pages do not have categories or tags by default. Use a shared public taxonomy, pin items manually, or choose a fallback."
+msgstr ""
+
+msgid "Go to fallback settings"
+msgstr ""
+
+msgid "Smart Related Posts"
+msgstr ""

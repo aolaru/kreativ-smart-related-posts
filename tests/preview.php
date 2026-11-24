@@ -7,6 +7,7 @@ function add_action(...$args) {}
 function add_filter(...$args) {}
 function remove_filter(...$args) {}
 function add_shortcode(...$args) {}
+function add_menu_page(...$args) { $GLOBALS['registered_menu'] = $args; }
 function get_option($name, $default = false) { return $GLOBALS['options'][$name] ?? $default; }
 function __($text, $domain = null) { return $text; }
 function esc_html__($text, $domain = null) { return htmlspecialchars($text, ENT_QUOTES); }
@@ -82,6 +83,12 @@ $GLOBALS['recent'] = [1, 5];
 $GLOBALS['can_manage'] = true;
 require dirname(__DIR__) . '/kreativ_smart_related_posts.php';
 $plugin = (new ReflectionClass(Kreativ_Smart_Related_Posts::class))->newInstanceWithoutConstructor();
+$plugin->admin_menu();
+if ($GLOBALS['registered_menu'][1] !== 'Smart Related Posts'
+    || $GLOBALS['registered_menu'][2] !== 'manage_options'
+    || $GLOBALS['registered_menu'][3] !== 'kreativ-smart-related-posts') {
+    throw new RuntimeException('Settings must be registered as a top-level admin menu.');
+}
 $preview = new ReflectionMethod($plugin, 'preview_related_posts');
 if (PHP_VERSION_ID < 80100) {
     $preview->setAccessible(true);
@@ -106,7 +113,8 @@ $_GET = ['kreasmre_preview_post' => '1', 'kreasmre_preview_nonce' => 'valid'];
 ob_start();
 $plugin->settings_page();
 $html = ob_get_clean();
-if (strpos($html, 'Preview related posts') === false || strpos($html, 'srp-minimal') === false
+if (strpos($html, 'action="/wp-admin/admin.php"') === false
+    || strpos($html, 'Preview related posts') === false || strpos($html, 'srp-minimal') === false
     || strpos($html, 'Post 3') === false || strpos($html, 'Post 2') !== false) {
     throw new RuntimeException('Settings page must render the selected post preview with manual exclusions.');
 }

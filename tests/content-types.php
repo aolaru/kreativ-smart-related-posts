@@ -62,6 +62,9 @@ $generation = get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION);
 wp_update_post(['ID' => $book, 'post_title' => 'Updated book']);
 kreasmre_assert(get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION) !== $generation, 'Saving a selected custom type invalidates cached results');
 $generation = get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION);
+wp_set_object_terms($book, [(int) $term['term_id']], 'kreasmre_topic');
+kreasmre_assert(get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION) === $generation, 'Unchanged taxonomy terms do not invalidate cached results');
+$generation = get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION);
 wp_set_object_terms($book, [], 'kreasmre_topic');
 kreasmre_assert(get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION) !== $generation, 'Changing custom taxonomy terms invalidates cached results');
 $unmatched_page = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Unmatched page'], true);
@@ -73,4 +76,53 @@ kreasmre_assert(in_array($book, kreasmre_private($plugin, 'get_related_posts', $
 $settings['target_types'] = [];
 update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
 kreasmre_assert(kreasmre_private($plugin, 'get_related_posts', $page, 6) === [], 'An empty target selection does not default to posts');
+
+$settings['target_types'] = ['kreasmre_book'];
+$settings['fallback_mode'] = 'latest';
+update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
+$filter = static function ($where) use ($book) {
+    global $wpdb;
+    return $where . ' AND ' . $wpdb->posts . '.ID != ' . (int) $book;
+};
+add_filter('posts_where', $filter);
+kreasmre_assert(!in_array($book, kreasmre_private($plugin, 'get_related_posts', $unmatched_page, 6), true), 'Fallback respects WordPress query filters');
+update_post_meta($unmatched_page, Kreativ_Smart_Related_Posts::META_INCLUDE, (string) $book);
+kreasmre_assert(!in_array($book, kreasmre_private($plugin, 'get_related_posts', $unmatched_page, 6), true), 'Pinned content respects WordPress query filters');
+remove_filter('posts_where', $filter);
+
+$generation = get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION);
+wp_delete_term((int) $term['term_id'], 'kreasmre_topic');
+kreasmre_assert(get_option(Kreativ_Smart_Related_Posts::CACHE_GENERATION) !== $generation, 'Deleting a custom taxonomy term invalidates cached results');
+
+$source = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Excerpt source', 'post_content' => 'Source content'], true);
+$target = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Excerpt target', 'post_content' => 'Distinct excerpt content'], true);
+if (is_wp_error($source) || is_wp_error($target)) { throw new RuntimeException('Could not create excerpt fixtures.'); }
+$settings['source_types'] = ['post'];
+$settings['target_types'] = ['post'];
+$settings['auto_insert'] = 1;
+$settings['show_excerpt'] = 1;
+update_option(Kreativ_Smart_Related_Posts::OPTION, $settings);
+update_post_meta($source, Kreativ_Smart_Related_Posts::META_INCLUDE, (string) $target);
+$old_query = $GLOBALS['wp_query'];
+$old_main_query = $GLOBALS['wp_the_query'];
+$GLOBALS['wp_query'] = new WP_Query(['p' => $source, 'post_type' => 'post']);
+$GLOBALS['wp_the_query'] = $GLOBALS['wp_query'];
+$GLOBALS['wp_query']->the_post();
+$content_calls = 0;
+$recursion_guard = static function ($content) use (&$content_calls) {
+    if (++$content_calls > 10) { throw new RuntimeException('Recursive content rendering detected'); }
+    return $content;
+};
+add_filter('the_content', $recursion_guard, 1);
+$buffer_level = ob_get_level();
+try {
+    $rendered = apply_filters('the_content', 'Source content');
+    kreasmre_assert(strpos($rendered, 'Distinct excerpt content') !== false, 'Automatic insertion renders generated excerpts without recursion');
+} finally {
+    while (ob_get_level() > $buffer_level) { ob_end_clean(); }
+    remove_filter('the_content', $recursion_guard, 1);
+    $GLOBALS['wp_query'] = $old_query;
+    $GLOBALS['wp_the_query'] = $old_main_query;
+    wp_reset_postdata();
+}
 echo "Content-type regression checks passed.\n";

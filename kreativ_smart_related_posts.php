@@ -24,6 +24,8 @@ class Kreativ_Smart_Related_Posts {
     const META_INCLUDE = '_kreasmre_manual_include_ids';
     const META_EXCLUDE = '_kreasmre_manual_exclude_ids';
 
+    private $rendering_excerpt = false;
+
     public function __construct() {
         register_activation_hook(__FILE__, [$this, 'activate']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
@@ -41,6 +43,7 @@ class Kreativ_Smart_Related_Posts {
         add_action('save_post', [$this, 'save_related_overrides_meta'], 20, 3);
         add_action('deleted_post', [$this, 'flush_related_cache_on_delete'], 10, 2);
         add_action('set_object_terms', [$this, 'flush_related_cache_on_terms'], 10, 6);
+        add_action('delete_term', [$this, 'flush_related_cache_on_term_delete'], 10, 3);
         add_filter('the_content', [$this, 'auto_append_related']);
 
         add_action('init', [$this, 'migrate_legacy_settings'], 1);
@@ -155,12 +158,13 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function admin_menu() {
-        add_options_page(
+        add_menu_page(
             __('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'),
-            __('Kreativ Smart Related Posts', 'kreativ-smart-related-posts'),
+            __('Smart Related Posts', 'kreativ-smart-related-posts'),
             'manage_options',
             'kreativ-smart-related-posts',
-            [$this, 'settings_page']
+            [$this, 'settings_page'],
+            'dashicons-admin-links'
         );
     }
 
@@ -270,7 +274,7 @@ class Kreativ_Smart_Related_Posts {
 
         add_settings_field('kreasmre_fallback_mode', __('Fallback posts', 'kreativ-smart-related-posts'), function () {
             $opt = $this->settings();
-            echo '<select name="' . esc_attr(self::OPTION) . '[fallback_mode]">';
+            echo '<select id="kreasmre-fallback-mode" name="' . esc_attr(self::OPTION) . '[fallback_mode]">';
             foreach (['none' => __('Show nothing', 'kreativ-smart-related-posts'), 'latest' => __('Latest posts', 'kreativ-smart-related-posts'), 'author' => __('Same author', 'kreativ-smart-related-posts')] as $k => $label) {
                 echo '<option value="' . esc_attr($k) . '" ' . selected($opt['fallback_mode'], $k, false) . '>' . esc_html($label) . '</option>';
             }
@@ -410,7 +414,7 @@ class Kreativ_Smart_Related_Posts {
                 <?php if (empty($recent_posts)) : ?>
                     <p><?php esc_html_e('Select a content type and publish content to use the preview. Recommendations need other published items.', 'kreativ-smart-related-posts'); ?></p>
                 <?php else : ?>
-                    <form method="get" action="<?php echo esc_url(admin_url('options-general.php')); ?>">
+                    <form method="get" action="<?php echo esc_url(admin_url('admin.php')); ?>">
                         <input type="hidden" name="page" value="kreativ-smart-related-posts" />
                         <?php wp_nonce_field('kreasmre_preview', 'kreasmre_preview_nonce'); ?>
                         <label for="kreasmre-preview-post"><?php esc_html_e('Published post', 'kreativ-smart-related-posts'); ?></label>
@@ -429,6 +433,7 @@ class Kreativ_Smart_Related_Posts {
                     <?php $preview = $this->preview_related_posts($preview_id, $opt); ?>
                     <?php if (empty($preview)) : ?>
                         <p class="notice notice-info inline"><?php esc_html_e('No related content found. Check that selected content types share a public taxonomy and published items, review manual exclusions, or choose a fallback mode below.', 'kreativ-smart-related-posts'); ?></p>
+                        <p><?php esc_html_e('Pages do not have categories or tags by default. Use a shared public taxonomy, pin items manually, or choose a fallback.', 'kreativ-smart-related-posts'); ?> <a href="#kreasmre-fallback-mode"><?php esc_html_e('Go to fallback settings', 'kreativ-smart-related-posts'); ?></a></p>
                     <?php else : ?>
                         <div class="kreasmre-preview-result">
                             <?php
@@ -632,7 +637,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function admin_enqueue_assets($hook_suffix) {
-        if ($hook_suffix === 'settings_page_kreativ-smart-related-posts') {
+        if ($hook_suffix === 'toplevel_page_kreativ-smart-related-posts') {
             wp_enqueue_style('kreasmre-admin', plugins_url('assets/css/kreasmre-admin.css', __FILE__), [], self::VERSION);
             $this->enqueue_assets();
             wp_enqueue_style('kreasmre-related-posts');
@@ -709,7 +714,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function flush_related_cache_on_terms($object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids) {
-        unset($terms, $tt_ids, $append, $old_tt_ids);
+        unset($terms);
 
         $type = get_post_type($object_id);
         if (!in_array($type, array_unique(array_merge($this->enabled_types($this->settings(), 'source_types'), $this->enabled_types($this->settings(), 'target_types'))), true)) {
@@ -721,7 +726,27 @@ class Kreativ_Smart_Related_Posts {
             return;
         }
 
+        if (!$append && is_array($tt_ids) && is_array($old_tt_ids)) {
+            $new_ids = array_map('intval', $tt_ids);
+            $old_ids = array_map('intval', $old_tt_ids);
+            sort($new_ids);
+            sort($old_ids);
+            if ($new_ids === $old_ids) {
+                return;
+            }
+        }
+
         $this->flush_related_cache();
+    }
+
+    public function flush_related_cache_on_term_delete($term_id, $tt_id, $taxonomy) {
+        unset($term_id, $tt_id);
+        $object = get_taxonomy($taxonomy);
+        $opt = $this->settings();
+        $types = array_merge($this->enabled_types($opt, 'source_types'), $this->enabled_types($opt, 'target_types'));
+        if ($object && $object->public && array_intersect($types, $object->object_type)) {
+            $this->flush_related_cache();
+        }
     }
 
     private function flush_related_cache() {
@@ -741,7 +766,7 @@ class Kreativ_Smart_Related_Posts {
     }
 
     public function auto_append_related($content) {
-        if (!is_singular() || !in_the_loop() || !is_main_query() || get_the_ID() !== get_queried_object_id() || !$this->source_enabled(get_the_ID(), $this->settings())) {
+        if ($this->rendering_excerpt || !is_singular() || !in_the_loop() || !is_main_query() || get_the_ID() !== get_queried_object_id() || !$this->source_enabled(get_the_ID(), $this->settings())) {
             return $content;
         }
 
@@ -846,7 +871,7 @@ class Kreativ_Smart_Related_Posts {
                                     <h4 class="srp-title"><?php echo esc_html(get_the_title($p)); ?></h4>
                                     <?php echo wp_kses_post($this->render_post_meta($p, $show_date, $show_category)); ?>
                                     <?php if ($show_excerpt) : ?>
-                                        <p class="srp-excerpt"><?php echo esc_html(wp_trim_words(wp_strip_all_tags(get_the_excerpt($p)), 20)); ?></p>
+                                        <p class="srp-excerpt"><?php echo esc_html($this->related_excerpt($p, 20)); ?></p>
                                     <?php endif; ?>
                                 </div>
                             </a>
@@ -860,7 +885,7 @@ class Kreativ_Smart_Related_Posts {
                             <a href="<?php echo esc_url(get_permalink($p)); ?>"<?php if ($link_target === 'new') : ?> target="_blank" rel="noopener noreferrer"<?php endif; ?>><strong><?php echo esc_html(get_the_title($p)); ?></strong></a>
                             <?php echo wp_kses_post($this->render_post_meta($p, $show_date, $show_category)); ?>
                             <?php if ($show_excerpt) : ?>
-                                <div class="srp-excerpt"><?php echo esc_html(wp_trim_words(wp_strip_all_tags(get_the_excerpt($p)), 22)); ?></div>
+                                <div class="srp-excerpt"><?php echo esc_html($this->related_excerpt($p, 22)); ?></div>
                             <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
@@ -875,6 +900,16 @@ class Kreativ_Smart_Related_Posts {
         </section>
         <?php
         return ob_get_clean();
+    }
+
+    private function related_excerpt($post_id, $words) {
+        $previous = $this->rendering_excerpt;
+        $this->rendering_excerpt = true;
+        try {
+            return wp_trim_words(wp_strip_all_tags(get_the_excerpt($post_id)), $words);
+        } finally {
+            $this->rendering_excerpt = $previous;
+        }
     }
 
     private function render_post_meta($post_id, $show_date, $show_category) {
@@ -1164,6 +1199,7 @@ class Kreativ_Smart_Related_Posts {
             'fields'              => 'ids',
             'ignore_sticky_posts' => true,
             'no_found_rows'       => true,
+            'suppress_filters'    => false,
         ];
 
         if ($mode === 'author') {
@@ -1236,6 +1272,7 @@ class Kreativ_Smart_Related_Posts {
                     'fields'              => 'ids',
                     'ignore_sticky_posts' => true,
                     'no_found_rows'       => true,
+                    'suppress_filters'    => false,
                 ]);
                 $validated_include = is_array($validated_include) ? array_map('intval', $validated_include) : [];
             }
