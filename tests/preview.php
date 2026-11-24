@@ -86,7 +86,8 @@ $plugin = (new ReflectionClass(Kreativ_Smart_Related_Posts::class))->newInstance
 $plugin->admin_menu();
 if ($GLOBALS['registered_menu'][1] !== 'Smart Related Posts'
     || $GLOBALS['registered_menu'][2] !== 'manage_options'
-    || $GLOBALS['registered_menu'][3] !== 'kreativ-smart-related-posts') {
+    || $GLOBALS['registered_menu'][3] !== 'kreativ-smart-related-posts'
+    || $GLOBALS['registered_menu'][6] !== 76) {
     throw new RuntimeException('Settings must be registered as a top-level admin menu.');
 }
 $preview = new ReflectionMethod($plugin, 'preview_related_posts');
