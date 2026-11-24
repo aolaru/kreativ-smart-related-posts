@@ -165,7 +165,7 @@ class Kreativ_Smart_Related_Posts {
             'kreativ-smart-related-posts',
             [$this, 'settings_page'],
             'dashicons-admin-links',
-            76
+            81
         );
     }
 
