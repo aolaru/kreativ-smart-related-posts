@@ -438,11 +438,12 @@ class Kreativ_Smart_Related_Posts {
                     <?php else : ?>
                         <div class="kreasmre-preview-result">
                             <?php
-                            echo $this->render_related($preview_id, [ // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markup is escaped by render_related().
+                            $preview_markup = $this->render_related($preview_id, [
                                 'layout' => $opt['layout'], 'limit' => $opt['posts_per'], 'excerpt' => $opt['show_excerpt'],
                                 'thumbnail' => $opt['show_thumbnail'], 'target' => $opt['link_target'],
                                 'date' => $opt['show_date'], 'category' => $opt['show_category'], 'heading' => $opt['heading_tag'],
                             ], $preview);
+                            echo $preview_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Markup is escaped by render_related().
                             ?>
                         </div>
                     <?php endif; ?>

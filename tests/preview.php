@@ -109,14 +109,16 @@ $settings['fallback_mode'] = 'latest';
 if ($preview->invoke($plugin, 5, $settings) !== [3, 2]) {
     throw new RuntimeException('Preview must honor the configured fallback.');
 }
-$GLOBALS['options'][Kreativ_Smart_Related_Posts::OPTION] = ['layout' => 'minimal', 'posts_per' => 2];
+$GLOBALS['options'][Kreativ_Smart_Related_Posts::OPTION] = ['layout' => 'minimal', 'posts_per' => 2, 'title' => '<script>alert(1)</script>'];
 $_GET = ['kreasmre_preview_post' => '1', 'kreasmre_preview_nonce' => 'valid'];
 ob_start();
 $plugin->settings_page();
 $html = ob_get_clean();
 if (strpos($html, 'action="/wp-admin/admin.php"') === false
     || strpos($html, 'Preview related posts') === false || strpos($html, 'srp-minimal') === false
-    || strpos($html, 'Post 3') === false || strpos($html, 'Post 2') !== false) {
+    || strpos($html, 'Post 3') === false || strpos($html, 'Post 2') !== false
+    || strpos($html, '<script>alert(1)</script>') !== false
+    || strpos($html, '&lt;script&gt;alert(1)&lt;/script&gt;') === false) {
     throw new RuntimeException('Settings page must render the selected post preview with manual exclusions.');
 }
 $_GET = ['kreasmre_preview_post' => '5', 'kreasmre_preview_nonce' => 'valid'];
